@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>雾见 MISTSEE · 请在小程序中打开</title>
+<title>雾见 MISTSEE · 紫微斗数 · 请在小程序中打开</title>
 <style>
   :root { color-scheme: dark; }
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -25,36 +25,132 @@
   @keyframes drift-a { from { transform: translate3d(-4%, -3%, 0) scale(1); } to { transform: translate3d(5%, 4%, 0) scale(1.15); } }
   @keyframes drift-b { from { transform: translate3d(4%, 3%, 0) scale(1.1); } to { transform: translate3d(-5%, -4%, 0) scale(1); } }
 
-  .stage { position: relative; text-align: center; padding: 0 40px; }
-  .mark { font-size: 36px; color: #6f5fa8; animation: glow 4s ease-in-out infinite alternate; }
-  @keyframes glow { from { opacity: .5; } to { opacity: 1; } }
-  h1 { margin-top: 28px; font-size: 19px; font-weight: 500; letter-spacing: .3em; text-indent: .3em; color: #b9aede; }
+  /* 散落的星子 */
+  .stars { position: fixed; inset: 0; pointer-events: none; }
+  .stars i { position: absolute; font-style: normal; color: #6f5fa8; animation: twinkle 5s ease-in-out infinite; }
+  .stars i:nth-child(1) { left: 10%; top: 18%; font-size: 13px; }
+  .stars i:nth-child(2) { left: 87%; top: 14%; font-size: 10px; animation-delay: 1.2s; animation-duration: 6s; }
+  .stars i:nth-child(3) { left: 6%;  top: 68%; font-size: 10px; animation-delay: 2.4s; }
+  .stars i:nth-child(4) { left: 91%; top: 72%; font-size: 14px; animation-delay: .8s;  animation-duration: 7s; }
+  .stars i:nth-child(5) { left: 17%; top: 88%; font-size: 8px;  color: #4d4270; animation-delay: 3s; }
+  .stars i:nth-child(6) { left: 80%; top: 88%; font-size: 8px;  color: #4d4270; animation-delay: 1.8s; }
+  .stars i:nth-child(7) { left: 72%; top: 8%;  font-size: 8px;  color: #4d4270; animation-delay: 4s; }
+  @keyframes twinkle { 0%, 100% { opacity: .12; } 50% { opacity: .75; } }
 
-  /* 小程序码：白底衬板（wxacode 深色码点在白底上才清晰） */
-  .qr { margin: 34px auto 0; width: 208px; height: 208px; background: #fff; border-radius: 16px;
+  .stage { position: relative; text-align: center; padding: 0 24px; }
+  .mark { font-size: 28px; color: #6f5fa8; animation: glow 4s ease-in-out infinite alternate; }
+  @keyframes glow { from { opacity: .5; } to { opacity: 1; } }
+  h1 { margin-top: 18px; font-size: 19px; font-weight: 500; letter-spacing: .3em; text-indent: .3em; color: #b9aede; }
+  .kicker { margin-top: 12px; font-size: 11px; letter-spacing: .42em; text-indent: .42em; color: #7d6fae; }
+  .kicker b { font-weight: 400; color: #4d4270; margin: 0 .5em; }
+
+  /* 紫微斗数十二宫命盘：4×4 宫格，中宫嵌小程序码，扫码即起盘 */
+  .chart {
+    position: relative; margin: 28px auto 0; width: 300px; height: 300px;
+    display: grid; grid-template-columns: repeat(4, 1fr); grid-template-rows: repeat(4, 1fr);
+    gap: 1px; background: rgba(139, 118, 208, .28);
+    border: 1px solid rgba(139, 118, 208, .28); border-radius: 12px; overflow: hidden;
+    box-shadow: 0 12px 60px rgba(90, 70, 160, .28);
+  }
+  .palace, .core { background: #171129; }
+  .core { grid-area: 2 / 2 / 4 / 4; }
+  .palace {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 500; letter-spacing: .18em; text-indent: .18em;
+    color: #8d7cc0; animation: transit 36s linear infinite;
+  }
+  /* 三方四正（命宫·财帛·官禄·迁移）微光内衬 */
+  .sq { box-shadow: inset 0 0 18px rgba(160, 135, 235, .1); }
+  .branch { font-size: 9px; font-weight: 400; letter-spacing: .1em; opacity: .55; margin-top: 3px; }
+  /* 十二宫按真实盘序排布：命宫起寅位，宫位逆时针，地支顺时针 */
+  .palace:nth-child(1)  { grid-area: 4 / 1; align-items: flex-start; justify-content: flex-end; padding: 0 0 8px 8px; }
+  .palace:nth-child(2)  { grid-area: 4 / 2; justify-content: flex-end; padding-bottom: 8px; }
+  .palace:nth-child(3)  { grid-area: 4 / 3; justify-content: flex-end; padding-bottom: 8px; }
+  .palace:nth-child(4)  { grid-area: 4 / 4; align-items: flex-end;   justify-content: flex-end; padding: 0 8px 8px 0; }
+  .palace:nth-child(5)  { grid-area: 3 / 4; align-items: flex-end;   padding-right: 8px; }
+  .palace:nth-child(6)  { grid-area: 2 / 4; align-items: flex-end;   padding-right: 8px; }
+  .palace:nth-child(7)  { grid-area: 1 / 4; align-items: flex-end;   justify-content: flex-start; padding: 8px 8px 0 0; }
+  .palace:nth-child(8)  { grid-area: 1 / 3; justify-content: flex-start; padding-top: 8px; }
+  .palace:nth-child(9)  { grid-area: 1 / 2; justify-content: flex-start; padding-top: 8px; }
+  .palace:nth-child(10) { grid-area: 1 / 1; align-items: flex-start; justify-content: flex-start; padding: 8px 0 0 8px; }
+  .palace:nth-child(11) { grid-area: 2 / 1; align-items: flex-start; padding-left: 8px; }
+  .palace:nth-child(12) { grid-area: 3 / 1; align-items: flex-start; padding-left: 8px; }
+  /* 星曜巡宫：一道微光按十二宫顺序流转 */
+  .palace:nth-child(2)  { animation-delay: 3s; }
+  .palace:nth-child(3)  { animation-delay: 6s; }
+  .palace:nth-child(4)  { animation-delay: 9s; }
+  .palace:nth-child(5)  { animation-delay: 12s; }
+  .palace:nth-child(6)  { animation-delay: 15s; }
+  .palace:nth-child(7)  { animation-delay: 18s; }
+  .palace:nth-child(8)  { animation-delay: 21s; }
+  .palace:nth-child(9)  { animation-delay: 24s; }
+  .palace:nth-child(10) { animation-delay: 27s; }
+  .palace:nth-child(11) { animation-delay: 30s; }
+  .palace:nth-child(12) { animation-delay: 33s; }
+  @keyframes transit {
+    0%, 6%   { color: #d6c9f5; text-shadow: 0 0 14px rgba(178, 152, 255, .85); }
+    16%, 100% { color: #8d7cc0; text-shadow: none; }
+  }
+
+  /* 小程序码：白底衬板落在中宫（wxacode 深色码点在白底上才清晰） */
+  .qr { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+        width: 208px; height: 208px; background: #fff; border-radius: 16px;
         display: flex; align-items: center; justify-content: center; padding: 12px;
-        box-shadow: 0 8px 40px rgba(74, 59, 120, .35); }
+        box-shadow: 0 8px 40px rgba(30, 20, 60, .55); }
   .qr img { width: 100%; height: 100%; display: block; }
   /* 码图缺失时的占位（public/mp-qr.png 未放置时兜底） */
   .qr--empty { font-size: 12px; color: #6b5d91; letter-spacing: .1em; line-height: 2; }
 
-  .sub { margin-top: 26px; font-size: 13px; letter-spacing: .22em; color: #8d7fb4; }
+  .sub { margin-top: 24px; font-size: 13px; letter-spacing: .22em; text-indent: .22em; color: #8d7fb4; }
   .brand { position: fixed; left: 0; right: 0; bottom: calc(26px + env(safe-area-inset-bottom)); font-size: 11px; letter-spacing: .3em; text-align: center; color: #4d4270; }
-  @media (prefers-reduced-motion: reduce) { .fog, .mark { animation: none; } }
+
+  /* 窄屏（如 iPhone SE 一代）收缩命盘，避免横向挤压 */
+  @media (max-width: 350px) {
+    .chart { width: 272px; height: 272px; }
+    .qr { width: 188px; height: 188px; }
+    .palace { font-size: 10px; letter-spacing: .12em; text-indent: .12em; }
+  }
+  /* 矮屏（如横屏 / 小屏）收缩命盘，保持完整可见 */
+  @media (max-height: 640px) {
+    .chart { width: 262px; height: 262px; margin-top: 20px; }
+    .qr { width: 182px; height: 182px; }
+    .palace { font-size: 10px; letter-spacing: .12em; text-indent: .12em; }
+    .mark { font-size: 22px; }
+    h1 { font-size: 17px; margin-top: 12px; }
+    .sub { margin-top: 18px; }
+  }
+  @media (prefers-reduced-motion: reduce) { .fog, .mark, .palace, .stars i { animation: none; } .stars i { opacity: .4; } }
 </style>
 </head>
 <body>
   <div class="fog fog--a"></div>
   <div class="fog fog--b"></div>
+  <div class="stars" aria-hidden="true"><i>✧</i><i>✦</i><i>✦</i><i>✧</i><i>·</i><i>·</i><i>·</i></div>
   <main class="stage">
     <div class="mark">✦</div>
     <h1>请在小程序中打开</h1>
-    <div class="qr" id="qr">
-      <img id="qrimg" src="/mp-qr.png" alt="雾见小程序码"
-           onerror="document.getElementById('qr').innerHTML='<div class=&quot;qr--empty&quot;>小程序码<br>筹备中</div>'">
+    <p class="kicker">紫微斗数<b>✧</b>十二宫命盘</p>
+    <div class="chart" aria-label="紫微斗数十二宫命盘">
+      <div class="palace sq">命宫<span class="branch">寅</span></div>
+      <div class="palace">兄弟<span class="branch">丑</span></div>
+      <div class="palace">夫妻<span class="branch">子</span></div>
+      <div class="palace">子女<span class="branch">亥</span></div>
+      <div class="palace sq">财帛<span class="branch">戌</span></div>
+      <div class="palace">疾厄<span class="branch">酉</span></div>
+      <div class="palace sq">迁移<span class="branch">申</span></div>
+      <div class="palace">交友<span class="branch">未</span></div>
+      <div class="palace sq">官禄<span class="branch">午</span></div>
+      <div class="palace">田宅<span class="branch">巳</span></div>
+      <div class="palace">福德<span class="branch">辰</span></div>
+      <div class="palace">父母<span class="branch">卯</span></div>
+      <div class="core"></div>
+      <div class="qr" id="qr">
+        <img id="qrimg" src="/mp-qr.png" alt="雾见小程序码"
+             onerror="document.getElementById('qr').innerHTML='<div class=&quot;qr--empty&quot;>小程序码<br>筹备中</div>'">
+      </div>
     </div>
-    <p class="sub">微信扫一扫 · 进入雾见</p>
+    <p class="sub">微信扫一扫 · 起一张你的命盘</p>
   </main>
-  <footer class="brand">雾见 MISTSEE</footer>
+  <footer class="brand">雾见 MISTSEE · 紫微斗数</footer>
 </body>
 </html>
