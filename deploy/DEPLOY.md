@@ -60,3 +60,14 @@ webpack 形如 `main-app-1175c1c0d82b673a.js`，文件名即指纹）。`make ve
 ## 发布记录
 
 > 沿 mistsee 惯例：每次发布在此追加一段（日期 + 版本/commit + 内容 + 验证结果 + 遗留）。
+
+### 2026-11-02 · feat(门禁): 内测参数 `?beta=1`
+
+- **内容**：`app/layout.tsx` 门禁脚本支持内测参数——URL 带 `?beta=1` 时放行并记入
+  `sessionStorage`（键 `ziwei-beta`），同一会话只需带一次参数，后续页面/刷新不再跳
+  `/open-in-mini.html`；会话结束自动失效。伪参数（如 `xbeta=1`）不生效。
+- **发布**：`make release`，构建指纹 `310vm2bl3xxpt`，线上首页一致；
+  `/chart`、`/open-in-mini.html` 均 200；线上 HTML 已含 `beta=1` 门禁逻辑。
+- **内测入口**：`https://ziwei.offiai.cn/?beta=1`
+- **遗留**：参数无保密性（纯客户端门禁），知道链接即可绕过；如需收紧可换
+  带签名的时间戳参数。

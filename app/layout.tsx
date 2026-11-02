@@ -49,8 +49,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <head>
         {/* 门禁：仅小程序 web-view 可用（UA 含 miniProgram），其余环境在首帧渲染前
             跳转引导页扫码进小程序；location.replace 不留历史，返回键不困在站内。
-            localhost 放行便于本地开发调试 */}
-        <script dangerouslySetInnerHTML={{ __html: `(function(){try{if(!/miniProgram/i.test(navigator.userAgent)&&!/^(localhost|127\\.0\\.0\\.1|\\[::1\\])$/.test(location.hostname)){location.replace('/open-in-mini.html');}}catch(e){}})();` }} />
+            localhost 放行便于本地开发调试；内测参数 ?beta=1 放行并记入 sessionStorage，
+            同一会话只需带一次参数，后续页面/刷新不再跳引导页，会话结束自动失效 */}
+        <script dangerouslySetInnerHTML={{ __html: `(function(){try{if(/[?&]beta=1/.test(location.search)){sessionStorage.setItem('ziwei-beta','1');return;}if(sessionStorage.getItem('ziwei-beta')==='1')return;if(!/miniProgram/i.test(navigator.userAgent)&&!/^(localhost|127\\.0\\.0\\.1|\\[::1\\])$/.test(location.hostname)){location.replace('/open-in-mini.html');}}catch(e){}})();` }} />
         <script dangerouslySetInnerHTML={{ __html: `(function(){try{var t=localStorage.getItem('ziwei-theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t);else document.documentElement.setAttribute('data-theme','dark');}catch(e){}})();` }} />
       </head>
       <body className="min-h-screen">
