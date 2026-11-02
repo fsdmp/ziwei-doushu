@@ -71,3 +71,20 @@ webpack 形如 `main-app-1175c1c0d82b673a.js`，文件名即指纹）。`make ve
 - **内测入口**：`https://ziwei.offiai.cn/?beta=1`
 - **遗留**：参数无保密性（纯客户端门禁），知道链接即可绕过；如需收紧可换
   带签名的时间戳参数。
+
+### 2026-11-02 · feat(排盘): 农历起盘 + 盘面公历/农历显示
+
+- **内容**：出生表单支持公历/农历切换（月下拉按当年闰月表插入闰X月、日按当月实际
+  天数生成、换年自动修正失效组合）；`formToBirthInfo` 收敛为唯一换算入口（农历→公历
+  →晚子时换日，非法日期返回 null），顺手修复 `/chart` 内联转换漏晚子时换日的旧 bug；
+  盘面标题下新增公历/农历/干支年日期行（展示层 Solar→Lunar 现算原始历法，不用安星口径
+  的 `chart.lunarInfo`，闰月不丢「闰」标）；分享链接新增 `cal`/`lp` 参数。另删排盘页
+  开源 Demo 文案。
+- **发布**：两次 `make release`。注意本次首页构建指纹不变（共享 chunk 未改动），
+  `make verify` 证明力不足，改用 `/chart` 页 chunk 清单比对验证（线上与本地 8 个
+  chunk 完全一致）。
+- **验证**：新增 `lunar-input.test.ts`（历法锚点/双路径/非法日期/链接 round-trip）挂入
+  `npm test`；一次性广域验证 `lunar-chart-dualpath.verify.ts`——1900–2026 每年
+  正月/七月/当年闰月 × 首末日 × 午时/晚子时共 **1204 对完整命盘 deepEqual 全过**。
+- **遗留**：`ChartSummary` 为无引用孤儿组件（原含日期显示），待清理；`make verify`
+  只比首页指纹，可考虑扩为同时比对 `/chart` 页。

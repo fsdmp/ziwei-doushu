@@ -1,8 +1,9 @@
 'use client';
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { ZiweiChart, Palace, Star } from '@/lib/ziwei/types';
 import { BRANCHES, STEMS } from '@/lib/ziwei/constants';
+import { Solar } from 'lunar-javascript';
 import PalaceCell from './PalaceCell';
 import TimeNav, { type TimeView, getYearStemIndex, buildSiHuaOverlay } from './TimeNav';
 
@@ -57,6 +58,20 @@ export default function ChartBoard({ chart, onStarSelect, onPalaceSelect, onSiHu
   const [timeView, setTimeView] = useState<TimeView>('mingpan');
   const [liunianYear, setLiunianYear] = useState<number>(new Date().getFullYear());
 
+  // 展示用原始农历日期（Solar→Lunar 现算）。不用 chart.lunarInfo——那是安星口径
+  // （闰月按 prev-month 等策略重映射过），闰月出生者会丢「闰」标；这里要给用户看
+  // 的是他输入的真实历法日期。纯展示，不参与排盘与大限/流年切换。
+  const lunarDisplay = useMemo(() => {
+    try {
+      const { year, month, day } = chart.birthInfo;
+      const lu = Solar.fromYmd(year, month, day).getLunar();
+      const m = lu.getMonth();
+      return { year: lu.getYear(), month: Math.abs(m), leap: m < 0, day: lu.getDay() };
+    } catch {
+      return null;
+    }
+  }, [chart.birthInfo.year, chart.birthInfo.month, chart.birthInfo.day]);
+
   const palaceMap: Record<number, Palace> = {};
   chart.palaces.forEach(p => { palaceMap[p.branch] = p; });
 
@@ -110,6 +125,17 @@ export default function ChartBoard({ chart, onStarSelect, onPalaceSelect, onSiHu
         <h2 className="text-sm tracking-[0.25em] font-medium" style={{ color: 'var(--t-gold)' }}>
           {chart.birthInfo.name ? `${chart.birthInfo.name} · ` : ''}紫微斗数命盘
         </h2>
+        {/* 公历/农历生日（引擎统一按公历排盘，展示层现算原始农历，闰月带「闰」标）
+            ——纯展示，不参与任何排盘/切换逻辑 */}
+        <div className="text-[10px] mt-1.5 tracking-wide flex flex-wrap justify-center gap-x-3" style={{ color: 'var(--t-faint)' }}>
+          <span>公历 {chart.birthInfo.year}年{chart.birthInfo.month}月{chart.birthInfo.day}日</span>
+          {lunarDisplay && (
+            <span>
+              农历 {lunarDisplay.year}年{lunarDisplay.leap ? '闰' : ''}{lunarDisplay.month}月{lunarDisplay.day}日
+            </span>
+          )}
+          <span>{STEMS[chart.lunarInfo.yearStem]}{BRANCHES[chart.lunarInfo.yearBranch]}年</span>
+        </div>
       </motion.div>
 
       {/* 4x4 命盘网格（含 SVG 叠加层）；minmax(0,1fr) 防止星曜文字把网格撑出屏幕 */}

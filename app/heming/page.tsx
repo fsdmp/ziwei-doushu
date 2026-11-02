@@ -99,12 +99,18 @@ export default function HemingPage() {
     setAuthExpired(false);
 
     try {
-      // 并行起两张盘（如果还没起）
+      // 并行起两张盘（如果还没起）；农历输入换算失败（日期不存在）在此拦下
+      const infoA = formToBirthInfo(formA!);
+      const infoB = formToBirthInfo(formB!);
+      if (!infoA || !infoB) {
+        setFormError('农历日期不存在，请核对双方出生日期（闰月 / 当月天数）');
+        return;
+      }
       let cA = chartA;
       let cB = chartB;
       const [newA, newB] = await Promise.all([
-        cA ? Promise.resolve(cA) : generateChart(formToBirthInfo(formA!)),
-        cB ? Promise.resolve(cB) : generateChart(formToBirthInfo(formB!)),
+        cA ? Promise.resolve(cA) : generateChart(infoA),
+        cB ? Promise.resolve(cB) : generateChart(infoB),
       ]);
       cA = newA;
       cB = newB;
