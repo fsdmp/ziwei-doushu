@@ -5,6 +5,6 @@ node_modules/
 !.env.example
 dist/
 out/
+next-env.d.ts
 *.tsbuildinfo
 .DS_Store
-node_modules
