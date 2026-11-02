@@ -112,11 +112,11 @@ export default function ChartBoard({ chart, onStarSelect, onPalaceSelect, onSiHu
         </h2>
       </motion.div>
 
-      {/* 4x4 命盘网格（含 SVG 叠加层） */}
+      {/* 4x4 命盘网格（含 SVG 叠加层）；minmax(0,1fr) 防止星曜文字把网格撑出屏幕 */}
       <div
         className="grid rounded-xl overflow-hidden relative"
         style={{
-          gridTemplateColumns: 'repeat(4, 1fr)',
+          gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
           gridTemplateRows: 'repeat(4, auto)',
           gap: '1px',
           background: 'var(--t-border)',
@@ -129,7 +129,7 @@ export default function ChartBoard({ chart, onStarSelect, onPalaceSelect, onSiHu
           const palace = palaceMap[branch];
           if (!palace) return null;
           return (
-            <div key={branch} style={{ gridRow: row, gridColumn: col, background: 'var(--t-bg)' }}>
+            <div key={branch} style={{ gridRow: row, gridColumn: col, background: 'var(--t-bg)', minWidth: 0, overflow: 'hidden' }}>
               <PalaceCell
                 palace={palace}
                 onClick={() => handlePalaceClick(branch)}
@@ -150,10 +150,10 @@ export default function ChartBoard({ chart, onStarSelect, onPalaceSelect, onSiHu
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ delay: 0.5 }}
-          className="flex flex-col items-center justify-center p-4 gap-3"
-          style={{ gridRow: '2 / 4', gridColumn: '2 / 4', background: 'var(--t-bg)' }}
+          className="palace-center-tile flex flex-col items-center justify-center p-4 gap-3"
+          style={{ gridRow: '2 / 4', gridColumn: '2 / 4', background: 'var(--t-bg)', minWidth: 0 }}
         >
-          <div className="text-5xl select-none leading-none" style={{ color: 'var(--t-gold)', opacity: 0.12, filter: 'drop-shadow(0 0 12px rgba(180,120,30,0.15))' }}>
+          <div className="palace-center-symbol text-5xl select-none leading-none" style={{ color: 'var(--t-gold)', opacity: 0.12, filter: 'drop-shadow(0 0 12px rgba(180,120,30,0.15))' }}>
             ☯
           </div>
 
@@ -169,7 +169,7 @@ export default function ChartBoard({ chart, onStarSelect, onPalaceSelect, onSiHu
           {chart.currentDaXianIndex >= 0 && (() => {
             const dx = chart.daXians[chart.currentDaXianIndex];
             return (
-              <div className="border border-purple-500/30 rounded-lg px-3 py-1.5 text-center"
+              <div className="border border-purple-500/30 rounded-lg px-2 py-1 text-center"
                 style={{ background: 'rgba(147,51,234,0.06)' }}>
                 <div className="text-[8px] text-purple-500/80 mb-0.5 tracking-wider">当前大限</div>
                 <div className="text-[12px] text-purple-400 font-medium tabular-nums">{dx.startAge}–{dx.endAge}岁</div>

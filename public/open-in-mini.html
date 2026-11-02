@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>雾见 MISTSEE · 请在小程序中打开</title>
+<style>
+  :root { color-scheme: dark; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    background: #120d22;
+    color: #9a8fb8;
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+  /* 漂移的雾层（与 soon.html 同源视觉） */
+  .fog { position: fixed; inset: -20%; pointer-events: none; filter: blur(60px); opacity: .55; }
+  .fog--a { background: radial-gradient(40% 30% at 30% 40%, #241a3f 0%, transparent 70%); animation: drift-a 26s ease-in-out infinite alternate; }
+  .fog--b { background: radial-gradient(35% 28% at 72% 62%, #1b1430 0%, transparent 70%); animation: drift-b 32s ease-in-out infinite alternate; }
+  @keyframes drift-a { from { transform: translate3d(-4%, -3%, 0) scale(1); } to { transform: translate3d(5%, 4%, 0) scale(1.15); } }
+  @keyframes drift-b { from { transform: translate3d(4%, 3%, 0) scale(1.1); } to { transform: translate3d(-5%, -4%, 0) scale(1); } }
+
+  .stage { position: relative; text-align: center; padding: 0 40px; }
+  .mark { font-size: 36px; color: #6f5fa8; animation: glow 4s ease-in-out infinite alternate; }
+  @keyframes glow { from { opacity: .5; } to { opacity: 1; } }
+  h1 { margin-top: 28px; font-size: 19px; font-weight: 500; letter-spacing: .3em; text-indent: .3em; color: #b9aede; }
+
+  /* 小程序码：白底衬板（wxacode 深色码点在白底上才清晰） */
+  .qr { margin: 34px auto 0; width: 208px; height: 208px; background: #fff; border-radius: 16px;
+        display: flex; align-items: center; justify-content: center; padding: 12px;
+        box-shadow: 0 8px 40px rgba(74, 59, 120, .35); }
+  .qr img { width: 100%; height: 100%; display: block; }
+  /* 码图缺失时的占位（public/mp-qr.png 未放置时兜底） */
+  .qr--empty { font-size: 12px; color: #6b5d91; letter-spacing: .1em; line-height: 2; }
+
+  .sub { margin-top: 26px; font-size: 13px; letter-spacing: .22em; color: #8d7fb4; }
+  .brand { position: fixed; left: 0; right: 0; bottom: calc(26px + env(safe-area-inset-bottom)); font-size: 11px; letter-spacing: .3em; text-align: center; color: #4d4270; }
+  @media (prefers-reduced-motion: reduce) { .fog, .mark { animation: none; } }
+</style>
+</head>
+<body>
+  <div class="fog fog--a"></div>
+  <div class="fog fog--b"></div>
+  <main class="stage">
+    <div class="mark">✦</div>
+    <h1>请在小程序中打开</h1>
+    <div class="qr" id="qr">
+      <img id="qrimg" src="/mp-qr.png" alt="雾见小程序码"
+           onerror="document.getElementById('qr').innerHTML='<div class=&quot;qr--empty&quot;>小程序码<br>筹备中</div>'">
+    </div>
+    <p class="sub">微信扫一扫 · 进入雾见</p>
+  </main>
+  <footer class="brand">雾见 MISTSEE</footer>
+</body>
+</html>

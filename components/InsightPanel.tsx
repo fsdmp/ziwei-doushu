@@ -1,6 +1,7 @@
 'use client';
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { streamAI, type AIError } from '@/lib/ai';
 import type { ZiweiChart, Palace } from '@/lib/ziwei/types';
 import type { TimeView } from './TimeNav';
 
@@ -276,43 +277,38 @@ ${selectedSiHua.starName}化${selectedSiHua.siHua}落在【${palaceName}】，�
 
   const streamResponse = async (apiMessages: { role: 'user' | 'assistant'; content: string }[]) => {
     try {
-      const res = await fetch('/api/interpret', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chart, messages: apiMessages }),
-      });
-      if (res.status === 404) throw new Error('api-missing');
-      if (!res.ok) throw new Error('请求失败');
-      if (!res.body) throw new Error('无响应流');
-
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let assistantText = '';
-
+      // 先占一个空气泡承接流式增量；流失败且气泡仍为空时在 catch 里替换为提示文案
       setMessages(prev => [...prev, { role: 'assistant', content: '' }]);
+      let got = '';
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        const chunk = decoder.decode(value, { stream: true });
-        for (const line of chunk.split('\n')) {
-          if (!line.startsWith('data: ')) continue;
-          const data = line.slice(6);
-          if (data === '[DONE]') break;
-          try {
-            const delta = JSON.parse(data).delta?.text ?? '';
-            assistantText += delta;
-            setMessages(prev => {
-              const updated = [...prev];
-              updated[updated.length - 1] = { role: 'assistant', content: assistantText };
-              return updated;
-            });
-          } catch { /* skip */ }
-        }
-      }
+      await streamAI('/api/v1/ziwei/interpret', { chart, messages: apiMessages }, (_delta, full) => {
+        got = full;
+        setMessages(prev => {
+          const updated = [...prev];
+          updated[updated.length - 1] = { role: 'assistant', content: full };
+          return updated;
+        });
+      });
+      if (!got) throw Object.assign(new Error('empty'), { code: 'empty' });
     } catch (e) {
-      const missing = e instanceof Error && e.message === 'api-missing';
-      setMessages(prev => [...prev, { role: 'assistant', content: missing ? '开源版不含 AI 解读接口（/api/interpret），需要你自己实现后才能用，详见 README「快速开始」。排盘本身不需要任何 API Key。' : '解读失败，请稍后重试。' }]);
+      const code = (e as AIError).code;
+      const msg = code === 'auth-expired'
+        ? '登录已过期，请回到小程序重新打开本页。'
+        : code === 'api-missing'
+          ? 'AI 解读后端未就绪：默认直连 mistsee.offiai.cn，若你自建了后端，请在 .env.local 配置 NEXT_PUBLIC_AI_API_BASE 指向它（协议见 README「快速开始」）。排盘本身不需要任何 API Key。'
+          : code === 'rate-limited'
+            ? '提问太快了，稍等片刻再试。'
+            : '解读失败，请稍后重试。';
+      setMessages(prev => {
+        const updated = [...prev];
+        const last = updated[updated.length - 1];
+        if (last?.role === 'assistant' && !last.content) {
+          updated[updated.length - 1] = { role: 'assistant', content: msg };
+        } else {
+          updated.push({ role: 'assistant', content: msg });
+        }
+        return updated;
+      });
     } finally {
       setLoading(false);
       loadingRef.current = false;
@@ -347,7 +343,7 @@ ${selectedSiHua.starName}化${selectedSiHua.siHua}落在【${palaceName}】，�
   };
 
   return (
-    <div className="flex flex-col h-full rounded-xl overflow-hidden card-glass">
+    <div className="insight-panel flex flex-col h-full rounded-xl overflow-hidden card-glass">
 
       {/* ── Topic buttons ── */}
       <div className="flex-shrink-0 px-2 pt-2.5 pb-2" style={{ borderBottom: '1px solid var(--t-border)' }}>
@@ -374,7 +370,7 @@ ${selectedSiHua.starName}化${selectedSiHua.siHua}落在【${palaceName}】，�
       </div>
 
       {/* ── Messages ── */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-4 min-h-0">
+      <div ref={scrollRef} className="insight-messages flex-1 overflow-y-auto p-4 space-y-4 min-h-0">
 
         {/* Loading state before first message */}
         {messages.length === 0 && (
@@ -433,7 +429,7 @@ ${selectedSiHua.starName}化${selectedSiHua.siHua}落在【${palaceName}】，�
       </div>
 
       {/* ── Input ── */}
-      <div className="flex-shrink-0 px-3 pb-3 pt-2" style={{ borderTop: '1px solid var(--t-border)' }}>
+      <div className="safe-bottom flex-shrink-0 px-3 pb-3 pt-2" style={{ borderTop: '1px solid var(--t-border)' }}>
         <div className="flex gap-2">
           <input
             type="text"

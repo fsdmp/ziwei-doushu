@@ -207,6 +207,7 @@ export default function BirthForm({ onSubmit, loading, initialData, onFormSave, 
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5 }}
       style={{ background: bg, border: `1px solid ${border}`, borderRadius: '24px', padding: '28px', backdropFilter: 'blur(20px)' }}
+      className="birth-form"
     >
       {/* 标题 */}
       <h3 style={{ color: goldText, fontSize: '12px', letterSpacing: '0.4em', textAlign: 'center', marginBottom: '20px', fontWeight: 500 }}>

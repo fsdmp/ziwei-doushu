@@ -2,6 +2,7 @@
 import { useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import BirthForm, { type BirthFormState } from '@/components/BirthForm';
+import { streamAI, type AIError } from '@/lib/ai';
 import { formToBirthInfo } from '@/lib/ziwei/share';
 import { generateChart as buildChart } from '@/lib/ziwei/algorithm';
 import type { BirthInfo, ZiweiChart } from '@/lib/ziwei/types';
@@ -64,8 +65,10 @@ export default function HemingPage() {
   const [analyzing, setAnalyzing] = useState(false);
   const [question, setQuestion] = useState('');
   const [analysisError, setAnalysisError] = useState(false);
-  // 开源版不含 /api/heming：接口 404 时单独说明，而不是让用户反复重试
+  // 后端未实现时（404）单独说明，而不是让用户反复重试
   const [apiMissing, setApiMissing] = useState(false);
+  // 登录态缺失/过期（后端 fail-closed）：提示回小程序重新打开
+  const [authExpired, setAuthExpired] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const analysisRef = useRef<HTMLDivElement>(null);
 
@@ -93,6 +96,7 @@ export default function HemingPage() {
     setAnalyzing(true);
     setAnalysis('');
     setAnalysisError(false);
+    setAuthExpired(false);
 
     try {
       // 并行起两张盘（如果还没起）
@@ -112,36 +116,18 @@ export default function HemingPage() {
       if (!chartA) setChartA(cA);
       if (!chartB) setChartB(cB);
 
-      const res = await fetch('/api/heming', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chartA: cA, chartB: cB, question: q ?? undefined }),
+      let acc = '';
+      await streamAI('/api/v1/ziwei/heming', { chartA: cA, chartB: cB, question: q ?? undefined }, (_delta, full) => {
+        acc = full;
+        setAnalysis(full);
       });
-      if (res.status === 404) { setApiMissing(true); throw new Error('api-missing'); }
-      if (!res.ok || !res.body) throw new Error();
-
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let text = '';
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        const chunk = decoder.decode(value, { stream: true });
-        for (const line of chunk.split('\n')) {
-          if (!line.startsWith('data: ')) continue;
-          const data = line.slice(6);
-          if (data === '[DONE]') break;
-          try {
-            const delta = JSON.parse(data).delta?.text ?? '';
-            text += delta;
-            setAnalysis(text);
-          } catch { /* skip */ }
-        }
-      }
+      if (!acc) throw new Error('empty');
       // scroll to analysis
       setTimeout(() => analysisRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
-    } catch {
+    } catch (e) {
+      // 后端缺失（404）单独说明，而不是让用户反复重试
+      if ((e as AIError).code === 'api-missing') setApiMissing(true);
+      if ((e as AIError).code === 'auth-expired') setAuthExpired(true);
       setAnalysisError(true);
     } finally {
       setAnalyzing(false);
@@ -284,9 +270,11 @@ export default function HemingPage() {
 
           {analysisError && (
             <div style={{ padding: '12px 16px', borderRadius: '10px', border: '1px solid var(--bdr)', background: 'var(--bg-card)', fontSize: '13px', color: 'var(--tx-2)', marginTop: '12px' }}>
-              {apiMissing
-                ? '开源版不含合盘 AI 分析接口（/api/heming），需要你自己实现后才能用。两人的命盘可以分别到「排盘」页（/chart）查看。'
-                : '分析暂时不可用，请重试。'}
+              {authExpired
+                ? '登录已过期，请回到小程序重新打开本页。'
+                : apiMissing
+                  ? '合盘 AI 分析后端未就绪：默认直连 mistsee.offiai.cn，若你自建了后端，请在 .env.local 配置 NEXT_PUBLIC_AI_API_BASE 指向它（见 README「快速开始」）。两人的命盘可以分别到「排盘」页（/chart）查看。'
+                  : '分析暂时不可用，请重试。'}
             </div>
           )}
         </div>

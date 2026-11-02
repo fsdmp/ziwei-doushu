@@ -1,9 +1,16 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import { ThemeProvider } from '@/components/ThemeProvider';
-import { Analytics } from '@vercel/analytics/next';
-import { SpeedInsights } from '@vercel/speed-insights/next';
 import { SITE_URL } from '@/lib/site';
+
+// 手机浏览器 / 微信内置浏览器 / 小程序 webview 统一视口：
+// viewport-fit=cover 兼容刘海屏安全区，maximumScale=1 防止聚焦输入框时 iOS 自动放大
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+  viewportFit: 'cover',
+};
 
 export const metadata: Metadata = {
   title: '紫微命盘 · 倪海厦正宗紫微斗数',
@@ -40,14 +47,16 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="zh-CN" suppressHydrationWarning>
       <head>
+        {/* 门禁：仅小程序 web-view 可用（UA 含 miniProgram），其余环境在首帧渲染前
+            跳转引导页扫码进小程序；location.replace 不留历史，返回键不困在站内。
+            localhost 放行便于本地开发调试 */}
+        <script dangerouslySetInnerHTML={{ __html: `(function(){try{if(!/miniProgram/i.test(navigator.userAgent)&&!/^(localhost|127\\.0\\.0\\.1|\\[::1\\])$/.test(location.hostname)){location.replace('/open-in-mini.html');}}catch(e){}})();` }} />
         <script dangerouslySetInnerHTML={{ __html: `(function(){try{var t=localStorage.getItem('ziwei-theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t);else document.documentElement.setAttribute('data-theme','dark');}catch(e){}})();` }} />
       </head>
       <body className="min-h-screen">
         <ThemeProvider>
           {children}
         </ThemeProvider>
-        <Analytics />
-        <SpeedInsights />
       </body>
     </html>
   );

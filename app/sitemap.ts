@@ -8,6 +8,9 @@
  */
 
 import type { MetadataRoute } from 'next';
+
+// 静态导出要求：元数据路由必须显式 force-static（Next 在 export 模式下不默认假定）
+export const dynamic = 'force-static';
 import { ALL_BOOKS } from '@/lib/classics';
 import { getAllKnowledgeRoutes } from '@/lib/seo/knowledge';
 import { SITE_URL } from '@/lib/site';

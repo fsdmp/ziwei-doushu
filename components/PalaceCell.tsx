@@ -70,7 +70,7 @@ export default function PalaceCell({
       animate={{ opacity: 1, scale: 1 }}
       transition={{ duration: 0.35, delay, ease: 'easeOut' }}
       onClick={onClick}
-      className="relative flex flex-col p-1.5 cursor-pointer transition-all duration-200 h-full"
+      className="palace-cell relative flex flex-col p-1.5 cursor-pointer transition-all duration-200 h-full"
       style={{
         minHeight: '90px',
         background: isCurrentDaXian
@@ -104,7 +104,7 @@ export default function PalaceCell({
       )}
 
       {/* 宫名行 */}
-      <div className="flex items-center gap-1 mb-0.5 pr-8">
+      <div className="palace-cell-name flex items-center gap-1 mb-0.5 pr-8">
         <span className={clsx('text-[10px] font-medium tracking-wide',
           isMingGong ? 'text-amber-500' : isShenGong ? 'text-sky-500' : ''
         )}
@@ -133,11 +133,11 @@ export default function PalaceCell({
           return (
             <div
               key={star.name}
-              className="flex items-center"
+              className="flex items-center min-w-0 overflow-hidden"
               onClick={e => { e.stopPropagation(); onStarClick?.(star); }}
             >
               <span className={clsx(
-                'text-[13px] leading-tight font-bold tracking-tight cursor-pointer hover:brightness-125 transition-all',
+                'palace-star text-[13px] leading-tight font-bold tracking-tight cursor-pointer hover:brightness-125 transition-all whitespace-nowrap',
                 star.brightness === 'bright' ? 'text-amber-300' : star.brightness === 'dim' ? 'text-amber-700/80' : 'text-amber-500',
               )}>
                 {star.name}

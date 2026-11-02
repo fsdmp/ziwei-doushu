@@ -74,10 +74,10 @@ export default function TimeNav({
   const overlayInfo = getOverlayInfo();
 
   return (
-    <div className="mb-3">
+    <div className="mb-3 min-w-0">
       {/* Tab 行 */}
       <div
-        className="flex items-center rounded-xl p-1 gap-1"
+        className="time-nav-row flex items-center rounded-xl p-1 gap-1 flex-nowrap min-w-0"
         style={{ background: 'var(--t-surface)', border: '1px solid var(--t-border)' }}
       >
         {/* 本命 */}
@@ -98,7 +98,7 @@ export default function TimeNav({
 
         {/* 流年 — 含年份切换 */}
         <div
-          className="relative flex-1 flex items-center justify-center rounded-lg py-1.5 gap-1 transition-all duration-200"
+          className="relative flex-1 min-w-0 flex items-center justify-center rounded-lg py-1.5 gap-1 transition-all duration-200"
           style={{
             background: view === 'liunian'
               ? 'rgba(212,168,67,0.12)'
@@ -110,16 +110,16 @@ export default function TimeNav({
         >
           <button
             onClick={() => onViewChange('liunian')}
-            className="text-[10px] font-medium flex-1 text-center"
+            className="text-[10px] font-medium text-center whitespace-nowrap"
             style={{ color: view === 'liunian' ? 'var(--t-gold)' : 'var(--t-faint)' }}
           >
             流年
           </button>
           {/* 年份 +/- */}
-          <div className="flex items-center gap-0.5">
+          <div className="flex items-center gap-0.5 flex-shrink-0">
             <button
               onClick={e => { e.stopPropagation(); onYearChange(liunianYear - 1); if (view !== 'liunian') onViewChange('liunian'); }}
-              className="text-[9px] w-4 h-4 flex items-center justify-center rounded"
+              className="text-[11px] w-[18px] h-[18px] flex items-center justify-center rounded"
               style={{ color: 'var(--t-faint)' }}
             >
               ‹
@@ -133,7 +133,7 @@ export default function TimeNav({
             </span>
             <button
               onClick={e => { e.stopPropagation(); onYearChange(liunianYear + 1); if (view !== 'liunian') onViewChange('liunian'); }}
-              className="text-[9px] w-4 h-4 flex items-center justify-center rounded"
+              className="text-[11px] w-[18px] h-[18px] flex items-center justify-center rounded"
               style={{ color: 'var(--t-faint)' }}
             >
               ›
@@ -180,7 +180,7 @@ function TabButton({
   return (
     <button
       onClick={onClick}
-      className="flex-1 py-1.5 text-[10px] font-medium rounded-lg transition-all duration-200"
+      className="time-nav-tab flex-1 min-w-0 py-1.5 px-1 text-[10px] font-medium rounded-lg transition-all duration-200 overflow-hidden text-ellipsis whitespace-nowrap"
       style={{
         background: active ? 'rgba(212,168,67,0.12)' : 'transparent',
         color: active ? 'var(--t-gold)' : 'var(--t-faint)',

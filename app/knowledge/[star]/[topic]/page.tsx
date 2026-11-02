@@ -33,7 +33,12 @@ export const dynamicParams = false;
 export async function generateStaticParams() {
   const routes = getAllKnowledgeRoutes();
   // URL 用拼音 slug 替代中文，避开 Vercel/CDN 中文路由边界问题
-  return routes.map(r => ({ star: r.slug, topic: r.topic }));
+  if (routes.length > 0) {
+    return routes.map(r => ({ star: r.slug, topic: r.topic }));
+  }
+  // 开源版 STAR_DB 置空（断语库不开源）→ 0 条路由，而静态导出要求至少一条。
+  // 返回哨兵路由（未知 slug，页面走 notFound() 导出为 404）：内容库补上后本分支不再生效。
+  return [{ star: '_placeholder', topic: 'overview' }];
 }
 
 export async function generateMetadata({ params }: { params: Promise<{ star: string; topic: string }> }) {
