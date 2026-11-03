@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 // 公告版本号——以后想再弹新公告，改这里就行（旧版 key 失效，新版重新弹一次）
-const ANNOUNCEMENT_VERSION = '2026-05-01';
+const ANNOUNCEMENT_VERSION = '2026-11-01';
 const STORAGE_KEY = `announcement_seen_${ANNOUNCEMENT_VERSION}`;
 
 export default function AnnouncementModal() {
@@ -120,7 +120,7 @@ export default function AnnouncementModal() {
                 LIMITED TIME · 限时回馈
               </div>
               <div style={{ fontSize: '14px', color: '#8b3a1a', fontWeight: 600, lineHeight: 1.6 }}>
-                <span style={{ fontSize: '16px', color: '#c45a2d', fontWeight: 700 }}>5 月 1 日 — 5 月 8 日</span>
+                <span style={{ fontSize: '16px', color: '#c45a2d', fontWeight: 700 }}>11 月 1 日 — 11 月 30 日</span>
                 <br />
                 平台全部功能 + AI 提问 全部免费开放
               </div>
@@ -136,7 +136,7 @@ export default function AnnouncementModal() {
               flex: 1,
             }}>
               <p style={{ margin: '0 0 12px' }}>
-                说实话，我真的没想到会有这么大的流量。
+                谢谢大家这段时间的关注和支持，能让更多人用上这个平台，是一件很幸运的事。
               </p>
               <p style={{ margin: '0 0 12px' }}>
                 最开始做这个平台，我的初心其实很简单：在 AI 时代，把倪师这套原本复杂、门槛很高的体系，尽量做得更简单、更高效、更容易理解。
@@ -160,9 +160,6 @@ export default function AnnouncementModal() {
               </p>
               <p style={{ margin: '0 0 12px' }}>
                 至于那些说&ldquo;你当下在看这些，其实也是命运的一部分&rdquo;之类的话，我就不多评价了。
-              </p>
-              <p style={{ margin: '0 0 12px' }}>
-                这几天账号被小红书抬走了，<strong style={{ color: '#c45a2d' }}>5 月 3 号开始恢复正常更新。</strong>
               </p>
               <p style={{ margin: '0 0 16px', color: '#3d2f10', fontWeight: 500 }}>
                 最后，真心祝愿大家都能越来越了解自己，越来越爱自己，也越来越有能力爱身边的人。
