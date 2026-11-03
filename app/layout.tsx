@@ -47,6 +47,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="zh-CN" suppressHydrationWarning>
       <head>
+        {/* 登录态首帧先取：小程序容器把 JWT 拼在 #t= 上，若等 lib/ai 首次请求才取，
+            站内 router.push 翻页（首页→/chart）已把 hash 丢掉——AI 问答将永远匿名 401
+            （后端 fail-closed）。这里取走存 sessionStorage 并从地址栏精确移除 t 参数
+            （不进分享链接/日志，其余 hash 内容保留），与 lib/ai 的兜底捕获同键同语义 */}
+        <script dangerouslySetInnerHTML={{ __html: `(function(){try{var h=location.hash;if(!h)return;var p=new URLSearchParams(h.charAt(0)==='#'?h.slice(1):h);var t=p.get('t');if(!t)return;sessionStorage.setItem('ziwei_ai_token',t);p.delete('t');var r=p.toString();history.replaceState(null,'',location.pathname+location.search+(r?'#'+r:''));}catch(e){}})();` }} />
         {/* 门禁：仅小程序 web-view 可用（UA 含 miniProgram），其余环境在首帧渲染前
             跳转引导页扫码进小程序；location.replace 不留历史，返回键不困在站内。
             localhost 放行便于本地开发调试；内测参数 ?beta=1 放行并记入 sessionStorage，

@@ -4,7 +4,9 @@
  * - 后端地址：默认直连线上后端 https://mistsee.offiai.cn（开源仓库本身不含后端）；
  *   自建后端时在 .env.local 配 NEXT_PUBLIC_AI_API_BASE 覆盖为你的地址。
  * - 鉴权：微信小程序 web-view 场景下，容器页会把登录态 JWT 拼在地址 #t=… 上
- *   （hash 不进服务端日志与 Referer）。首次请求前捕获存 sessionStorage 并从地址栏清除。
+ *   （hash 不进服务端日志与 Referer）。捕获存 sessionStorage 并从地址栏清除：
+ *   layout 首帧内联脚本已提前取走（站内 router.push 翻页会丢 hash，等首次请求
+ *   才取就晚了），这里保留同款兜底（直开无脚本的极端场景），同键幂等。
  *   后端 fail-closed：无 token / token 过期返回 401（内容送检需要真实 openid），
  *   前端提示回小程序重新打开；排盘本身不受影响。
  * - SSE 协议：data: {"delta":{"text":"…"}}，流尾 data: [DONE]。
