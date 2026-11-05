@@ -1,7 +1,15 @@
 'use client';
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { streamAI, type AIError } from '@/lib/ai';
+import { pushShareCard } from '@/lib/mini-bridge';
+import {
+  chartKey, qnaCanAsk, qnaUnlocked, recordQnaAsk, markQnaUnlocked, unlockByShare,
+  QNA_FREE_LIMIT, qnaUsed, isMember, unlockBy, refreshMember,
+} from '@/lib/unlock';
+import { openRewardedAd, openPaySheet } from '@/lib/mini-bridge';
+import { saveLastSession } from '@/lib/ziwei/history';
+import { reportEventOnce, reportEvent } from '@/lib/events';
 import type { ZiweiChart, Palace } from '@/lib/ziwei/types';
 import type { TimeView } from './TimeNav';
 
@@ -21,6 +29,8 @@ interface InsightPanelProps {
   chart: ZiweiChart;
   selectedPalace?: Palace | null;
   selectedSiHua?: SelectedSiHua | null;
+  /** 会话恢复初值（「回到上次」/ 档案续问）：不传则空会话 */
+  initialMessages?: { role: 'user' | 'assistant'; content: string; hidden?: boolean }[];
 }
 
 const TOPICS = [
@@ -183,11 +193,29 @@ function AiContent({ text, streaming }: { text: string; streaming?: boolean }) {
   );
 }
 
-export default function InsightPanel({ chart, selectedPalace, selectedSiHua }: InsightPanelProps) {
-  const [messages, setMessages] = useState<Message[]>([]);
+export default function InsightPanel({ chart, selectedPalace, selectedSiHua, initialMessages }: InsightPanelProps) {
+  const [messages, setMessages] = useState<Message[]>(initialMessages ?? []);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [activeTopic, setActiveTopic] = useState<string>('overview');
+  // v2 问答限额（docs/09 §4）：每盘免费 5 问，按盘 id（起盘 uuid）记本地；撞墙出「分享解锁」
+  const cKey = useMemo(() => chartKey(chart), [chart]);
+  const [walled, setWalled] = useState(false);
+  // 墙条 DOM：撞墙时滚进视野（sendMessage 的撞墙分支用）
+  const wallRef = useRef<HTMLDivElement | null>(null);
+  // 解读反馈（docs/11 §3.3）：已评消息下标集合——一轮一评，防连点重复上报
+  const [rated, setRated] = useState<Set<number>>(new Set());
+  // 会员支付回来自动收墙（docs/10 §5.3）：pageshow（bridge 收银台 navigateBack
+  // 回 H5）刷新 member 态，已开通则墙即刻消失——「会员直接用，不阻塞」
+  useEffect(() => {
+    const onShow = () => {
+      refreshMember().then(() => {
+        if (isMember()) setWalled(false);
+      });
+    };
+    window.addEventListener('pageshow', onShow);
+    return () => window.removeEventListener('pageshow', onShow);
+  }, []);
   const messagesRef = useRef<Message[]>([]); // always-current copy for closures
   const loadingRef = useRef(false);
   const autoLoaded = useRef(false);
@@ -206,10 +234,12 @@ export default function InsightPanel({ chart, selectedPalace, selectedSiHua }: I
     }
   }, [messages]);
 
-  // Auto-generate 命格总览 on mount
+  // Auto-generate 命格总览 on mount（「回到上次」恢复的会话除外：历史里已有总览，
+  // 再自动补一轮 = 多烧一次 LLM 且对话里重复同一段）
   useEffect(() => {
     if (autoLoaded.current) return;
     autoLoaded.current = true;
+    if (initialMessages && initialMessages.length > 0) return;
     sendMessage(TOPIC_PROMPTS.overview, true);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -275,13 +305,27 @@ ${selectedSiHua.starName}化${selectedSiHua.siHua}落在【${palaceName}】，�
     sendMessage(prompt, true);
   }, [selectedSiHua]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const streamResponse = async (apiMessages: { role: 'user' | 'assistant'; content: string }[]) => {
+  // roundMessages：本轮全量消息（含 hidden 展示标记——存「回到上次」要原样带回，
+  // hidden 是纯前端概念，发给服务端的载荷在函数内剥掉，wire format 不变）。
+  // byUser：用户主动问才计免费额度——计数点见 onDelta 首帧。
+  const streamResponse = async (roundMessages: Message[], byUser = false) => {
+    let got = '';    // 本轮回答全文（成功时）
+    let failMsg = ''; // 本轮失败文案（失败时）
+    let counted = false; // 本轮额度是否已计（onDelta 首帧只计一次）
     try {
       // 先占一个空气泡承接流式增量；流失败且气泡仍为空时在 catch 里替换为提示文案
       setMessages(prev => [...prev, { role: 'assistant', content: '' }]);
-      let got = '';
 
-      await streamAI('/api/v1/ziwei/interpret', { chart, messages: apiMessages }, (_delta, full) => {
+      await streamAI('/api/v1/ziwei/interpret', {
+        chart,
+        messages: roundMessages.map(m => ({ role: m.role, content: m.content })),
+      }, (_delta, full) => {
+        // 额度计数点 = 首个流式增量到达（服务端已受理并开始回答）：fetch 失败/
+        // 限流/空回答的那次不烧额度，用户可无负担重试
+        if (byUser && !counted) {
+          counted = true;
+          if (!qnaUnlocked(cKey)) recordQnaAsk(cKey);
+        }
         got = full;
         setMessages(prev => {
           const updated = [...prev];
@@ -299,6 +343,7 @@ ${selectedSiHua.starName}化${selectedSiHua.siHua}落在【${palaceName}】，�
           : code === 'rate-limited'
             ? '提问太快了，稍等片刻再试。'
             : '解读失败，请稍后重试。';
+      failMsg = msg;
       setMessages(prev => {
         const updated = [...prev];
         const last = updated[updated.length - 1];
@@ -312,34 +357,70 @@ ${selectedSiHua.starName}化${selectedSiHua.siHua}落在【${palaceName}】，�
     } finally {
       setLoading(false);
       loadingRef.current = false;
+      // 本地最近一条会话（docs/10 §5.4）：非会员「回到上次」的数据源，每轮问答
+      // 后覆盖存（chart + 全量消息）。载荷从入参 roundMessages + 本轮回答构造
+      // （messagesRef 靠 useEffect 同步，finally 时可能滞后最后一轮的批处理）；
+      // hidden 原样保留——恢复后主题按钮的伪用户气泡才能回到隐藏态
+      const last = got || failMsg;
+      const all: Message[] = [
+        ...roundMessages,
+        ...(last ? [{ role: 'assistant' as const, content: last }] : []),
+      ];
+      saveLastSession('solo', { chart, messages: all });
     }
   };
 
-  const sendMessage = (text: string, hidden = false) => {
+  // byUser：用户主动提问（主题按钮/输入框）才计入免费额度——mount 总览、选宫、
+  // 选四化的自动注入是体验钩子不烧额度（docs/09 §4 的「问」对应用户的问）。
+  // hidden 只管气泡展示：主题按钮 hidden=true 复用隐藏用户气泡，但它是用户动作。
+  const sendMessage = (text: string, hidden = false, byUser = false) => {
     if (!text.trim() || loadingRef.current) return;
+    if (byUser && !qnaCanAsk(cKey)) {
+      // 撞墙：免费额度用完且未分享解锁——出墙（合规：留替代路，不说「仅限分享」）
+      setWalled(true);
+      // 数据事件面（docs/11 §1）：墙曝光每盘一记（reportEventOnce 幂等），撞墙率
+      // = qna_wall / interpret_done 的 session——转化看台账 qna_extra 行
+      reportEventOnce('qna_wall', cKey, { asked: qnaUsed(cKey) });
+      // 不静默：点了没反应最伤信任——墙条就在输入框上方，滚进视野让用户看到
+      // 「为什么没动静」（本页无 toast 基建，滚动是贴现有交互的最小实现）
+      requestAnimationFrame(() => wallRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }));
+      return;
+    }
+    // 会员钥匙（docs/11 §5）：member 短路生效的问答盘落台账 source=member
+    //（每盘一锁幂等，归因「会员免掉多少分享解锁」）
+    if (byUser && isMember() && !qnaUnlocked(cKey)) {
+      unlockBy('qna_extra', cKey, 'member');
+    }
     loadingRef.current = true;
     setLoading(true);
 
     const userMsg: Message = { role: 'user', content: text, hidden };
     // Capture current messages synchronously via ref (avoids stale closure)
-    const apiMessages = [...messagesRef.current, userMsg].map(m => ({
-      role: m.role,
-      content: m.content,
-    }));
+    const roundMessages = [...messagesRef.current, userMsg];
 
     setMessages(prev => [...prev, userMsg]);
     setInput('');
-    streamResponse(apiMessages);
+    streamResponse(roundMessages, byUser);
+  };
+
+  // 分享解锁（docs/09 §7.4）：解锁信号 = 分享入口被点击——推转发卡素材即解锁
+  //（本地置位，点按钮即生效，永不被弱网卡住），server 台账 fire-and-forget。
+  // 一次给足：本盘不限次，墙永久消失。
+  const shareUnlock = () => {
+    pushShareCard({ title: '我的紫微命盘 · 倪海厦正宗解读', ch: 'qna' });
+    unlockByShare('qna_extra', cKey);
+    markQnaUnlocked(cKey);
+    setWalled(false);
   };
 
   const handleTopicClick = (topicKey: string) => {
     if (loadingRef.current) return;
     setActiveTopic(topicKey);
-    sendMessage(TOPIC_PROMPTS[topicKey], true);
+    sendMessage(TOPIC_PROMPTS[topicKey], true, true);
   };
 
   const handleSend = () => {
-    sendMessage(input);
+    sendMessage(input, false, true);
   };
 
   return (
@@ -422,11 +503,103 @@ ${selectedSiHua.starName}化${selectedSiHua.siHua}落在【${palaceName}】，�
                   命理解读
                 </div>
                 <AiContent text={msg.content} streaming={loading && isLastMsg} />
+                {!(loading && isLastMsg) && (
+                  <div className="flex gap-2 mt-1.5" style={{ opacity: rated.has(i) ? 0.35 : 0.7 }}>
+                    {(['up', 'down'] as const).map(r => (
+                      <button
+                        key={r}
+                        onClick={() => {
+                          if (rated.has(i)) return;
+                          setRated(prev => new Set(prev).add(i));
+                          reportEvent('feedback', cKey, { rating: r });
+                        }}
+                        style={{ background: 'transparent', border: 'none', cursor: 'pointer',
+                          fontSize: 12, padding: '2px 4px', color: 'var(--t-faint)' }}
+                        aria-label={r === 'up' ? '有帮助' : '没帮助'}
+                      >
+                        {r === 'up' ? '👍' : '👎'}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </motion.div>
             );
           })}
         </AnimatePresence>
       </div>
+
+      {/* ── v2 问答墙（docs/09 §4/§7）：免费额度尽，分享解锁一次给足；永远留替代路 ── */}
+      <AnimatePresence>
+        {walled && (
+          <motion.div
+            ref={wallRef}
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 8 }}
+            className="flex-shrink-0 mx-3 mb-2 rounded-xl p-3"
+            style={{
+              background: 'rgba(122,92,190,0.08)',
+              border: '1px solid rgba(122,92,190,0.25)',
+            }}
+          >
+            <div className="text-[11px] mb-2" style={{ color: 'var(--t-text)', lineHeight: 1.7 }}>
+              这张盘的 {QNA_FREE_LIMIT} 次免费解读已经用完。分享给朋友，<b>这张盘</b>的解读就不限次数了——
+              <span style={{ color: 'var(--t-faint)' }}>或开通会员处处不限，或看段光影同样解锁。</span>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={shareUnlock}
+                className="flex-1 py-2 rounded-lg text-[11px] font-semibold transition-all"
+                style={{
+                  background: 'linear-gradient(135deg, #7a5cbe, #5b3fa0)',
+                  color: 'white', letterSpacing: '0.08em',
+                  cursor: 'pointer',
+                }}
+              >
+                ✦ 分享解锁 · 本盘不限次
+              </button>
+              <button
+                onClick={() => openPaySheet('member')}
+                className="flex-1 py-2 rounded-lg text-[11px] font-semibold"
+                style={{
+                  background: 'transparent', cursor: 'pointer',
+                  border: '1px solid rgba(212,168,67,0.5)', color: 'var(--t-gold)',
+                  letterSpacing: '0.08em',
+                }}
+              >
+                ✦ 会员解锁 · 处处不限
+              </button>
+            </div>
+            <div className="flex gap-2 mt-2" style={{ justifyContent: 'center' }}>
+              <button
+                onClick={() => {
+                  // 广告钥匙（docs/11 §4.1）：与分享同权限——本盘一次给足不限次。
+                  // 点按钮即解锁（bridge AdWatch 记账与本地互不依赖，同分享的
+                  // 「不验证真分享」口径）；台账 source=ad 归因
+                  markQnaUnlocked(cKey);
+                  unlockBy('qna_extra', cKey, 'ad');
+                  setWalled(false);
+                  openRewardedAd();
+                }}
+                className="text-[11px] underline underline-offset-2"
+                style={{ color: 'var(--t-faint)', background: 'transparent',
+                  border: 'none', cursor: 'pointer', padding: '2px 6px' }}
+              >
+                或看段光影 · 同样解锁
+              </button>
+              <span style={{ color: 'var(--t-faint)', fontSize: 11, alignSelf: 'center' }}>·</span>
+              <button
+                onClick={() => setWalled(false)}
+                className="text-[11px] underline underline-offset-2"
+                style={{ color: 'var(--t-faint)', background: 'transparent',
+                  border: 'none', cursor: 'pointer', padding: '2px 6px' }}
+              >
+                先不问
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* ── Input ── */}
       <div className="safe-bottom flex-shrink-0 px-3 pb-3 pt-2" style={{ borderTop: '1px solid var(--t-border)' }}>

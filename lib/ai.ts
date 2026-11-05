@@ -47,9 +47,46 @@ export interface AIError extends Error {
   /**
    * 'auth-expired'：登录态缺失/过期（后端 fail-closed，需回小程序重新打开）；
    * 'api-missing'：后端未实现该接口（404）；'rate-limited'：触发限流；
-   * 'network' / 'failed'：网络/服务异常
+   * 'network' / 'failed'：网络/服务异常；'biz'：后端业务错（code!=0，msg 带中文文案）
    */
   code?: string;
+  /** code='biz' 时的后端业务码与文案（如「这份邀请已被使用」） */
+  bizCode?: number;
+  bizMsg?: string;
+}
+
+/**
+ * 非流式 JSON 请求（裂变邀请等普通接口共用 streamAI 的鉴权与错误语义）：
+ * 解 {code,msg,data} 包络，code!=0 抛 code='biz' 的 AIError（携带原文案）。
+ */
+export async function requestJSON<T>(
+  path: string,
+  method: 'GET' | 'POST' | 'DELETE',
+  body?: unknown,
+  /** keepalive：页面卸载中也要把请求发出去（events 关页冲尾批用，sendBeacon 带不了鉴权头） */
+  opts?: { keepalive?: boolean },
+): Promise<T> {
+  let res: Response;
+  try {
+    res = await fetch(`${AI_API_BASE}${path}`, {
+      method,
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: body === undefined ? undefined : JSON.stringify(body),
+      keepalive: opts?.keepalive === true,
+    });
+  } catch {
+    throw Object.assign(new Error('network'), { code: 'network' });
+  }
+  if (res.status === 401) throw Object.assign(new Error('auth-expired'), { code: 'auth-expired' });
+  if (res.status === 404) throw Object.assign(new Error('api-missing'), { code: 'api-missing' });
+  if (res.status === 429) throw Object.assign(new Error('rate-limited'), { code: 'rate-limited' });
+  if (!res.ok) throw Object.assign(new Error('failed'), { code: 'failed' });
+  const env = await res.json().catch(() => null) as { code?: number; msg?: string; data?: T } | null;
+  if (!env) throw Object.assign(new Error('failed'), { code: 'failed' });
+  if (env.code !== 0) {
+    throw Object.assign(new Error(env.msg || 'failed'), { code: 'biz', bizCode: env.code, bizMsg: env.msg });
+  }
+  return env.data as T;
 }
 
 /**

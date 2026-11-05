@@ -24,7 +24,7 @@ make verify     # 只验线上（需本地已有 out/，对比构建指纹）
 但每个 chunk 文件名带内容 hash（turbopack 形如 `2mmpezlrfmbu5.js`，
 webpack 形如 `main-app-1175c1c0d82b673a.js`，文件名即指纹）。`make verify`
 从本地 `out/index.html` 提取首个 chunk 文件名，确认线上首页引用同一指纹、
-且 `/chart`、`/open-in-mini.html` 返回 200——指纹一致即证明「线上跑的正是
+且 `/chart`、`/invite`、`/archive`、`/open-in-mini.html` 返回 200——指纹一致即证明「线上跑的正是
 本次构建」（nginx 已配 HTML 不缓存，同步即生效）。
 
 ## rsync 语义（重要）

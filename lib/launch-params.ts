@@ -37,3 +37,12 @@ export function readLaunchParams(): LaunchParams {
   }
   return merged;
 }
+
+/** 读并清（路由级一次性消费，首页裂变落地路由用）：首页识别到 invite 换路由后清掉
+ *  缓存——否则 B 在落地页点「返回」回首页时会被旧码再次弹回落地页出不去。缓存本只
+ *  服务「内页跳转后取参」，路由消费是一次性动作，取走即清。 */
+export function consumeLaunchParams(): LaunchParams {
+  const params = readLaunchParams();
+  try { sessionStorage.removeItem(STORE_KEY); } catch { /* 忽略 */ }
+  return params;
+}

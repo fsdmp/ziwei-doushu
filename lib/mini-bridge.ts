@@ -11,9 +11,11 @@
 /** JSSDK 版本：web-view 内 wx.miniProgram 系列无需 wx.config，脚本到即用 */
 const SDK_URL = 'https://res.wx.qq.com/open/js/jweixin-1.6.0.js';
 
-/** wx.miniProgram 的最小类型面（本站只用这两件事：跳原生页 / 带数据） */
+/** wx.miniProgram 的最小类型面（本站只用这两件事：跳原生页 / 带数据）。
+ *  navigateTo 支持 {url, success, fail}（JSSDK 1.6.0）——fail 用于老版小程序
+ *  没铺 bridge 页时把失败反馈给用户，不静默。 */
 interface WxMiniProgram {
-  navigateTo(options: { url: string }): void;
+  navigateTo(options: { url: string; success?: () => void; fail?: (res: { errMsg?: string }) => void }): void;
   postMessage(options: { data: unknown }): void;
 }
 
@@ -92,14 +94,18 @@ function toast(msg: string): void {
 
 /** 跳小程序原生页（统一收口）。连点节流：快速双击会叠两层 bridge 页，要返回两次；
  *  桥不可用必须出声——静默失败里最贵的是充值入口（用户点「充值」毫无反应 = 直接
- *  损失收入），不能只靠「入口本就不该渲染」兜底（弱网下 SDK 加载失败是真实场景） */
+ *  损失收入），不能只靠「入口本就不该渲染」兜底（弱网下 SDK 加载失败是真实场景，
+ *  老版小程序没铺 bridge 页时 navigateTo 走 fail 回调，同样要出声） */
 let lastBridgeJumpAt = 0;
 function miniNavigateTo(path: string): void {
   const now = Date.now();
   if (now - lastBridgeJumpAt < 500) return;
   lastBridgeJumpAt = now;
   loadBridge()
-    .then(mp => mp.navigateTo({ url: path }))
+    .then(mp => mp.navigateTo({
+      url: path,
+      fail: () => toast('调不起小程序能力，请稍后再试'),
+    }))
     .catch(() => toast('调不起小程序能力，请稍后再试'));
 }
 

@@ -1,53 +1,19 @@
 'use client';
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import BirthForm, { type BirthFormState } from '@/components/BirthForm';
 import ShareButton from '@/components/ShareButton';
+import HemingInviteButton from '@/components/HemingInviteButton';
+import AiContent from '@/components/AiContent';
 import { streamAI, type AIError } from '@/lib/ai';
 import { formToBirthInfo } from '@/lib/ziwei/share';
 import { generateChart as buildChart } from '@/lib/ziwei/algorithm';
+import { newSessionId } from '@/lib/unlock';
+import { reportEventOnce } from '@/lib/events';
+import { touchSession } from '@/lib/unlock';
+import { saveLastSession, loadLastSession, type LastSession } from '@/lib/ziwei/history';
 import type { BirthInfo, ZiweiChart } from '@/lib/ziwei/types';
 import { useTheme } from '@/components/ThemeProvider';
-
-// ─── AiContent 渲染器（与 InsightPanel 一致）────────────────
-function AiContent({ text, streaming }: { text: string; streaming?: boolean }) {
-  const lines = text.split('\n');
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-      {lines.map((line, i) => {
-        const sectionMatch = line.match(/^\*\*【(.+?)】\*\*$/);
-        if (sectionMatch) {
-          return (
-            <div key={i} style={{ paddingTop: i === 0 ? 0 : '14px', paddingBottom: '4px' }}>
-              <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--ac)', letterSpacing: '0.04em' }}>
-                【{sectionMatch[1]}】
-              </span>
-            </div>
-          );
-        }
-        if (line.trim() === '') return <div key={i} style={{ height: '4px' }} />;
-        const parts = line.split(/\*\*(.+?)\*\*/);
-        return (
-          <div key={i} style={{ fontSize: '13px', lineHeight: 1.75, color: 'var(--tx-2)' }}>
-            {parts.map((part, j) =>
-              j % 2 === 0
-                ? part
-                : <strong key={j} style={{ fontWeight: 500, color: 'var(--tx-0)' }}>{part}</strong>
-            )}
-          </div>
-        );
-      })}
-      {streaming && (
-        <span style={{
-          display: 'inline-block', width: '7px', height: '13px',
-          background: 'var(--ac)', opacity: 0.5, borderRadius: '2px',
-          animation: 'pulse 1s ease-in-out infinite',
-          verticalAlign: 'middle', marginLeft: '2px',
-        }} />
-      )}
-    </div>
-  );
-}
 
 export default function HemingPage() {
   const router = useRouter();
@@ -60,6 +26,11 @@ export default function HemingPage() {
   // 双方表单状态由 BirthForm onFormSave 同步到此处，统一按钮触发起盘
   const [formA, setFormA] = useState<BirthFormState | null>(null);
   const [formB, setFormB] = useState<BirthFormState | null>(null);
+  // 「回到上次」按钮的数据源：mounted 后再读 localStorage——渲染期读会与预渲染
+  // HTML（构建期无存储数据 = 无按钮）不一致，触发 hydration 回退整树重渲
+  //（web-view 有 hydrate 黑屏前科，docs/09 §8，不新增 mismatch 源）
+  const [lastHeming, setLastHeming] = useState<LastSession | null>(null);
+  useEffect(() => { setLastHeming(loadLastSession('heming')); }, []);
 
   // ─── AI 合盘分析状态 ─────────────────────────────────────
   const [analysis, setAnalysis] = useState('');
@@ -120,8 +91,14 @@ export default function HemingPage() {
         setAnalyzing(false);
         return;
       }
+      // 甲盘挂起盘会话 id（server interpret_done/档案按甲盘 sessionId 归因，
+      // 与 solo 口径一致：一次起盘一个 uuid）
+      if (!cA.sessionId) cA.sessionId = newSessionId();
       if (!chartA) setChartA(cA);
       if (!chartB) setChartB(cB);
+      // 数据事件面（docs/11 §1）：一次合盘起盘一记（追问不重复记——cA 已有 id）
+      reportEventOnce('chart_new', cA.sessionId, { chart_kind: 'heming', from: 'fresh' });
+      touchSession(cA.sessionId);
 
       let acc = '';
       await streamAI('/api/v1/ziwei/heming', { chartA: cA, chartB: cB, question: q ?? undefined }, (_delta, full) => {
@@ -129,6 +106,10 @@ export default function HemingPage() {
         setAnalysis(full);
       });
       if (!acc) throw new Error('empty');
+      // 本地最近一条会话（docs/10 §5.4）：heming「回到上次」的数据源
+      saveLastSession('heming', {
+        chart: cA, chartB: cB, formA: formA ?? undefined, formB: formB ?? undefined, analysis: acc,
+      });
       // scroll to analysis
       setTimeout(() => analysisRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
     } catch (e) {
@@ -176,6 +157,29 @@ export default function HemingPage() {
         <div style={{ width: '1px', height: '20px', background: 'var(--bdr-med)' }} />
         <span style={{ fontSize: '12px', color: 'var(--ac)', letterSpacing: '0.2em' }}>合盘分析</span>
         <div style={{ flex: 1 }} />
+        {lastHeming && (
+          <button
+            onClick={() => {
+              if (!lastHeming.chart) return;
+              if (lastHeming.formA) setFormA(lastHeming.formA);
+              if (lastHeming.formB) setFormB(lastHeming.formB);
+              setChartA(lastHeming.chart as typeof chartA);
+              if (lastHeming.chartB) setChartB(lastHeming.chartB as typeof chartB);
+              if (lastHeming.analysis) setAnalysis(lastHeming.analysis);
+            }}
+            style={{ fontSize: '12px', color: 'var(--tx-3)', background: 'none',
+              border: '1px solid var(--bdr-med)', borderRadius: '8px', padding: '4px 10px', cursor: 'pointer' }}
+          >
+            回到上次
+          </button>
+        )}
+        <button
+          onClick={() => router.push('/archive')}
+          style={{ fontSize: '12px', color: 'var(--tx-3)', background: 'none',
+            border: '1px solid var(--bdr-med)', borderRadius: '8px', padding: '4px 10px', cursor: 'pointer' }}
+        >
+          ✦ 云端档案
+        </button>
         <span style={{ fontSize: '11px', color: 'var(--tx-3)' }}>感情 · 合伙 · 亲子 · 朋友</span>
       </header>
 
@@ -204,6 +208,14 @@ export default function HemingPage() {
               onSubmit={() => {}}
               onFormSave={setFormA}
             />
+            {/* 裂变入口（docs/09 §3.1）：甲方填好后可把邀请发给 TA，由 TA 亲自填乙方——
+                「想知道和 TA 的关系」是裂变引擎第一排序，比物质奖励强 */}
+            <div style={{ marginTop: '16px', textAlign: 'center' }}>
+              <HemingInviteButton form={formA} />
+              <p style={{ fontSize: '10px', color: 'var(--tx-3)', marginTop: '8px', lineHeight: 1.6 }}>
+                转发给 TA，对方填好生辰就能看到你们的合盘
+              </p>
+            </div>
           </div>
 
           {/* 乙方 */}
@@ -293,9 +305,11 @@ export default function HemingPage() {
               <div style={{ fontSize: '11px', letterSpacing: '0.2em', color: 'var(--tx-3)' }}>
                 针对此次合盘继续追问
               </div>
-              {/* 标题型分享（无单盘卡图）：合盘页未来的裂变主场景（合盘邀请）就挂这里，
-                  ShareButton 的 invite prop 玩法上线时传入即可 */}
-              <ShareButton title="紫微合盘 · 看看你们的缘分" ch="heming" label="✦ 分享合盘" />
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                {/* 裂变常驻入口与分享同排（docs/09 §3.1）：让没填乙方的人也能发起邀请 */}
+                <HemingInviteButton form={formA} label="☯ 邀请 TA 合盘" />
+                <ShareButton title="紫微合盘 · 看看你们的缘分" ch="heming" label="✦ 分享合盘" />
+              </div>
             </div>
 
             {/* 快捷问题 */}

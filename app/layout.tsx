@@ -2,6 +2,8 @@ import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import { ThemeProvider } from '@/components/ThemeProvider';
 import MiniBridgeFab from '@/components/MiniBridgeFab';
+import ErrorReporter from '@/components/ErrorReporter';
+import InviteReturnBanner from '@/components/InviteReturnBanner';
 import { SITE_URL } from '@/lib/site';
 
 // 手机浏览器 / 微信内置浏览器 / 小程序 webview 统一视口：
@@ -63,8 +65,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="min-h-screen">
         <ThemeProvider>
           {children}
+          {/* 合盘邀请回访提示条（docs/09 §3.1 A 侧回访）：TA 回应后 A 任意页面进站可见 */}
+          <InviteReturnBanner />
           {/* 小程序桥常驻测试入口：右缘悬浮，仅 web-view 环境渲染，联调完整体摘除 */}
           <MiniBridgeFab />
+          <ErrorReporter />
         </ThemeProvider>
       </body>
     </html>

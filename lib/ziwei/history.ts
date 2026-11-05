@@ -4,6 +4,43 @@ import type { BirthFormState } from '@/components/BirthForm';
 const STORAGE_KEY = 'ziwei_history';
 const MAX_ENTRIES = 10;
 
+// ─── 本地最近一条会话（docs/10 §5.4：非会员「回到上次」）───────────────────
+// solo / heming 各存最近 1 条完整会话（生辰 + 盘 + 对话原文）：语义是会话恢复
+// 不是历史——换设备/清缓存/起下一个盘即丢（会员的「档案」才是留存）。
+// 独立 key，与解锁状态 key（ziwei_qna_*/ziwei_liunian_*）互不干扰。
+
+export interface LastSessionData {
+  chart: unknown;               // ZiweiChart（solo=甲盘 / heming=甲盘）
+  chartB?: unknown;             // heming 的乙盘
+  /** solo 的问答记录（InsightPanel 恢复初值） */
+  messages?: { role: 'user' | 'assistant'; content: string; hidden?: boolean }[];
+  form?: BirthFormState;        // solo 生辰（重起盘表单预填用）
+  formA?: BirthFormState;       // heming 双方生辰
+  formB?: BirthFormState;
+  analysis?: string;            // heming 的解读全文
+}
+
+export interface LastSession extends LastSessionData {
+  savedAt: number;
+}
+
+const LAST_KEY = (kind: 'solo' | 'heming') => `ziwei_last_${kind}`;
+
+export function saveLastSession(kind: 'solo' | 'heming', data: LastSessionData): void {
+  try { localStorage.setItem(LAST_KEY(kind), JSON.stringify({ ...data, savedAt: Date.now() })); } catch { /* 忽略 */ }
+}
+
+export function loadLastSession(kind: 'solo' | 'heming'): LastSession | null {
+  try {
+    const raw = localStorage.getItem(LAST_KEY(kind));
+    return raw ? JSON.parse(raw) as LastSession : null;
+  } catch { return null; }
+}
+
+export function lastSessionLabel(kind: 'solo' | 'heming'): string | null {
+  return loadLastSession(kind) ? '回到上次' : null;
+}
+
 export interface HistoryEntry {
   id: string;
   label: string;

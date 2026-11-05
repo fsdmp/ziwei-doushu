@@ -5,6 +5,7 @@ import { motion, useScroll, useTransform, useInView, AnimatePresence } from 'fra
 import StarField from '@/components/StarField';
 import { useTheme, type Theme } from '@/components/ThemeProvider';
 import AnnouncementModal from '@/components/AnnouncementModal';
+import { consumeLaunchParams } from '@/lib/launch-params';
 
 // ─── 滚动入场 wrapper ────────────────────────────────────
 function FadeIn({
@@ -461,6 +462,20 @@ export default function HomePage() {
       document.body.style.background = '';
     };
   }, [c.bgBase]);
+
+  // 裂变落地路由（docs/09 §3.1 B 侧回应第 1 步）：容器页把 invite/ch 透传到本页 query，
+  // 首页识别到邀请码即整页换到邀请落地页——B 落地永远经这里（转发卡 path 恒落容器页）。
+  // useEffect 内执行 = 门禁（layout 首帧 UA 判定跳 /open-in-mini.html）之后的客户端路径，
+  // 浏览器直访在 React 挂载前已被门禁带走，不打断门禁跳转；无参不动作（replace 只带
+  // invite 时才发生，不会成环）。
+  useEffect(() => {
+    const { invite, ch } = consumeLaunchParams();
+    if (!invite) return;
+    const qs = new URLSearchParams();
+    qs.set('invite', invite);
+    if (ch) qs.set('ch', ch);
+    router.replace(`/invite?${qs.toString()}`);
+  }, [router]);
 
   return (
     <div style={{ background: c.bgBase, transition: 'background 0.35s ease' }} className="overflow-x-hidden">

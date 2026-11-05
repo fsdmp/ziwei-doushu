@@ -112,6 +112,10 @@ export interface ZiweiChart {
   currentDaXianIndex: number;
   /** Signed analysis-cache eligibility marker assigned by /api/generate. */
   analysisCacheProfile?: string;
+  /** 起盘会话 id（docs/09 §4/§5/§6 解锁维度）：起盘时生成的一次性 uuid——问答
+   *  额度与流年解锁都按它计，重起盘即新 id 重新上锁。由起盘入口赋值
+   *  （newSessionId，lib/unlock.ts），排盘引擎自身不关心。 */
+  sessionId?: string;
   /** 命主星（按命宫地支查表） */
   mingZhu?: string;
   /** 身主星（按生年地支查表） */

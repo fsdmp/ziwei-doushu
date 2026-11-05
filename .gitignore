@@ -3,6 +3,7 @@ node_modules/
 .vercel/
 .env*
 !.env.example
+!.env.production
 dist/
 out/
 next-env.d.ts

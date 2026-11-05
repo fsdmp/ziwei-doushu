@@ -1,9 +1,15 @@
 'use client';
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { ZiweiChart, Palace, Star } from '@/lib/ziwei/types';
 import { BRANCHES, STEMS } from '@/lib/ziwei/constants';
 import { Solar } from 'lunar-javascript';
+import {
+  chartKey, liunianUnlocked, markLiunianUnlocked, unlockByShare,
+  isMember, unlockBy, refreshMember,
+} from '@/lib/unlock';
+import { reportEventOnce } from '@/lib/events';
+import { pushShareCard, openPaySheet, openRewardedAd } from '@/lib/mini-bridge';
 import PalaceCell from './PalaceCell';
 import TimeNav, { type TimeView, getYearStemIndex, buildSiHuaOverlay } from './TimeNav';
 
@@ -58,6 +64,64 @@ export default function ChartBoard({ chart, onStarSelect, onPalaceSelect, onSiHu
   const [timeView, setTimeView] = useState<TimeView>('mingpan');
   const [liunianYear, setLiunianYear] = useState<number>(new Date().getFullYear());
 
+  // ── v2.5 流年锁（docs/09 §5）：默认当年自由看，过去/未来年份一次分享解锁该盘
+  // 全部年份。解锁按盘 id（起盘 uuid）记本地——重起盘即重新上锁（2026-11-05 拍板），
+  // server 只落台账。
+  const cKey = useMemo(() => chartKey(chart), [chart]);
+  const [liunianLocked, setLiunianLocked] = useState(() => !liunianUnlocked(cKey));
+  // 会员钥匙（docs/11 §5）：member 短路让流年直接放行——落台账 source=member
+  //（幂等；首把钥匙 share 先到则不被覆盖）。
+  // 支付回来自动解锁：pageshow（bridge 收银台 navigateBack 回 H5）刷新 member，
+  // 已开通则收锁面——「会员直接用，不阻塞」的回程半段
+  useEffect(() => {
+    if (isMember()) {
+      if (typeof window !== 'undefined') {
+        try {
+          if (localStorage.getItem(`ziwei_liunian_unlocked_${cKey}`) !== '1') {
+            unlockBy('liunian_all', cKey, 'member');
+          }
+        } catch { /* 忽略 */ }
+      }
+      if (liunianLocked) setLiunianLocked(false);
+    }
+  }, [cKey, liunianLocked]);
+  useEffect(() => {
+    const onShow = () => {
+      refreshMember().then(() => {
+        if (isMember()) {
+          setLiunianLocked(false);
+          setUnlockAsk(null);
+        }
+      });
+    };
+    window.addEventListener('pageshow', onShow);
+    return () => window.removeEventListener('pageshow', onShow);
+  }, []);
+  // 想去但被锁的年份（解锁面板的钩子文案用「解锁 {year} 年的你」）
+  const [unlockAsk, setUnlockAsk] = useState<number | null>(null);
+
+  const handleYearChange = (year: number) => {
+    if (year !== new Date().getFullYear() && liunianLocked) {
+      setUnlockAsk(year); // 锁面：拦截切换，弹解锁钩子
+      // 数据事件面（docs/11 §1）：锁面曝光每盘一记，流年漏斗的曝光分母
+      reportEventOnce('liunian_wall', cKey, { year });
+      return;
+    }
+    setLiunianYear(year);
+  };
+
+  // 分享解锁（docs/09 §7.4）：点按钮即解锁（本地置位，永不被弱网卡住），一次给足
+  //（本盘全部年份），入口随之消失；server 台账 fire-and-forget。
+  const shareUnlockLiunian = () => {
+    if (unlockAsk === null) return;
+    pushShareCard({ title: `解锁 ${unlockAsk} 年的我 · 紫微流年`, ch: 'liunian' });
+    unlockByShare('liunian_all', cKey);
+    markLiunianUnlocked(cKey);
+    setLiunianLocked(false);
+    setLiunianYear(unlockAsk);
+    setUnlockAsk(null);
+  };
+
   // 展示用原始农历日期（Solar→Lunar 现算）。不用 chart.lunarInfo——那是安星口径
   // （闰月按 prev-month 等策略重映射过），闰月出生者会丢「闰」标；这里要给用户看
   // 的是他输入的真实历法日期。纯展示，不参与排盘与大限/流年切换。
@@ -110,8 +174,88 @@ export default function ChartBoard({ chart, onStarSelect, onPalaceSelect, onSiHu
         view={timeView}
         liunianYear={liunianYear}
         onViewChange={setTimeView}
-        onYearChange={setLiunianYear}
+        onYearChange={handleYearChange}
       />
+
+      {/* ── v2.5 流年解锁面（docs/09 §5）：锁的是年份切换本身，渲染层无需改。
+          钩子文案「解锁 {year} 年的你」；合规：点按钮即解锁、一次给足、留替代路 ── */}
+      <AnimatePresence>
+        {unlockAsk !== null && (
+          <motion.div
+            initial={{ opacity: 0, y: -6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -6 }}
+            transition={{ duration: 0.18 }}
+            className="mb-3 rounded-xl p-3.5"
+            style={{
+              background: 'rgba(122,92,190,0.08)',
+              border: '1px solid rgba(122,92,190,0.28)',
+            }}
+          >
+            <div className="text-[11px] mb-1" style={{ color: 'var(--t-gold)', letterSpacing: '0.15em' }}>
+              解锁 {unlockAsk} 年的你
+            </div>
+            <div className="text-[10px] mb-2.5" style={{ color: 'var(--t-text2)', lineHeight: 1.7 }}>
+              那一年的流年四化、宫位联动与运势走向。分享一次，<b>这张盘</b>的过去与未来年份全部打开——
+              <span style={{ color: 'var(--t-faint)' }}>或开通会员处处不限，或看段光影同样解锁；今年的流年本来就能看。</span>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={shareUnlockLiunian}
+                className="flex-1 py-2 rounded-lg text-[11px] font-semibold transition-all"
+                style={{
+                  background: 'linear-gradient(135deg, #7a5cbe, #5b3fa0)',
+                  color: 'white', letterSpacing: '0.08em',
+                  cursor: 'pointer',
+                }}
+              >
+                ✦ 分享解锁 · 全部年份
+              </button>
+              <button
+                onClick={() => openPaySheet('member')}
+                className="flex-1 py-2 rounded-lg text-[11px] font-semibold"
+                style={{
+                  background: 'transparent', cursor: 'pointer',
+                  border: '1px solid rgba(212,168,67,0.5)', color: 'var(--t-gold)',
+                  letterSpacing: '0.08em',
+                }}
+              >
+                ✦ 会员解锁 · 处处不限
+              </button>
+              <button
+                onClick={() => setUnlockAsk(null)}
+                className="px-3 py-2 rounded-lg text-[11px]"
+                style={{
+                  border: '1px solid var(--t-border)', color: 'var(--t-faint)',
+                  background: 'transparent', cursor: 'pointer',
+                }}
+              >
+                先看今年
+              </button>
+            </div>
+            <div className="mt-2" style={{ textAlign: 'center' }}>
+              <button
+                onClick={() => {
+                  // 广告钥匙（docs/11 §4.1）：与分享同权限——该盘全部年份一次
+                  // 给足；点按钮即解锁（与分享同口径），台账 source=ad
+                  if (unlockAsk === null) return;
+                  markLiunianUnlocked(cKey);
+                  unlockBy('liunian_all', cKey, 'ad');
+                  setLiunianLocked(false);
+                  setLiunianYear(unlockAsk);
+                  setUnlockAsk(null);
+                  openRewardedAd();
+                }}
+                className="text-[11px] underline underline-offset-2"
+                style={{ color: 'var(--t-faint)', background: 'transparent',
+                  border: 'none', cursor: 'pointer', padding: '2px 6px' }}
+              >
+                或看段光影 · 同样解锁
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* 命盘标题 */}
       <motion.div

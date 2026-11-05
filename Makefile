@@ -66,7 +66,7 @@ verify: ## 验证线上指纹与关键路径（对比本地 out/index.html）
 	else \
 		echo "$(RED)✗ 线上未见本次构建指纹（CDN/缓存或同步未生效）$(NC)"; exit 1; \
 	fi; \
-	for p in /chart /open-in-mini.html; do \
+	for p in /chart /invite /archive /open-in-mini.html; do \
 		code=$$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 $(SITE)$$p); \
 		if [ "$$code" = "200" ]; then echo "$(GREEN)✓ $$p → 200$(NC)"; \
 		else echo "$(RED)✗ $$p → $$code$(NC)"; exit 1; fi; \

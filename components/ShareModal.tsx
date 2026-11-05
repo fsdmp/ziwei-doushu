@@ -28,9 +28,13 @@ interface ShareModalProps {
   /** 裂变参数（容器页拼进转发卡 path 的 query，素材契约见 lib/mini-bridge.ts） */
   invite?: string;
   ch?: string;
+  /** 隐藏「复制链接」行（邀请场景传 true）：复制出的 H5 直链在非 web-view 环境会被
+   *  门禁拦到 /open-in-mini.html 且 query（邀请码）丢失——承诺一条走不通的通道比不给
+   *  更伤。默认 false，普通分享（卡图/命盘链接）行为不变。 */
+  hideCopyLink?: boolean;
 }
 
-export default function ShareModal({ open, onClose, shareUrl, chart, birth, highlight, title, invite, ch }: ShareModalProps) {
+export default function ShareModal({ open, onClose, shareUrl, chart, birth, highlight, title, invite, ch, hideCopyLink }: ShareModalProps) {
   const [copied, setCopied] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [inMini, setInMini] = useState(false);
@@ -190,16 +194,18 @@ export default function ShareModal({ open, onClose, shareUrl, chart, birth, high
                 </button>
               )}
 
-              <button onClick={copyLink}
-                style={{
-                  padding: '14px', borderRadius: '10px',
-                  border: '1px solid rgba(184,146,42,0.4)', background: 'white',
-                  color: '#b8922a', fontSize: '14px', fontWeight: 500, letterSpacing: '0.12em',
-                  cursor: 'pointer',
-                }}
-              >
-                {copied ? '✓ 已复制链接' : '🔗 复制命盘链接'}
-              </button>
+              {!hideCopyLink && (
+                <button onClick={copyLink}
+                  style={{
+                    padding: '14px', borderRadius: '10px',
+                    border: '1px solid rgba(184,146,42,0.4)', background: 'white',
+                    color: '#b8922a', fontSize: '14px', fontWeight: 500, letterSpacing: '0.12em',
+                    cursor: 'pointer',
+                  }}
+                >
+                  {copied ? '✓ 已复制链接' : '🔗 复制命盘链接'}
+                </button>
+              )}
 
               <div style={{
                 fontSize: '11px', color: '#a89b7c', lineHeight: 1.7,
@@ -209,9 +215,9 @@ export default function ShareModal({ open, onClose, shareUrl, chart, birth, high
                 <div style={{ marginBottom: '4px', fontWeight: 600, color: '#8b6a14' }}>使用提示：</div>
                 {inMini ? (
                   <>· 点「转发给微信好友」备好文案，再点右上角「···」转发<br /></>
-                ) : (
+                ) : !hideCopyLink ? (
                   <>· 复制链接发给微信好友，对方点开看自己的盘起点<br /></>
-                )}
+                ) : null}
                 {/* 有卡图才有下载入口（chart=null 的标题型分享没这条能力，提示不提） */}
                 {chart && <>· 下载图片可发朋友圈 / 抖音 / 小红书</>}
               </div>

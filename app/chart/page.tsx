@@ -1,10 +1,16 @@
 'use client';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import BirthForm, { type BirthFormState } from '@/components/BirthForm';
 import ChartBoard from '@/components/ChartBoard';
 import InsightPanel from '@/components/InsightPanel';
+import HemingInviteButton from '@/components/HemingInviteButton';
 import ShareButton, { birthForShare } from '@/components/ShareButton';
 import { pushShareCard } from '@/lib/mini-bridge';
+import { newSessionId } from '@/lib/unlock';
+import { reportEventOnce } from '@/lib/events';
+import { touchSession } from '@/lib/unlock';
+import { loadLastSession, type LastSession } from '@/lib/ziwei/history';
 import { generateChart } from '@/lib/ziwei/algorithm';
 import type { BirthInfo, ZiweiChart, Palace } from '@/lib/ziwei/types';
 
@@ -31,11 +37,48 @@ function mingStarsHighlight(chart: ZiweiChart): string | undefined {
 /** 转发卡默认标题：ShareButton 的兜底文案与起盘时静默 push 用同一份，避免两处漂移 */
 const SHARE_TITLE = '紫微斗数 · 起一张你的命盘';
 
+/** 起盘后主动提示「和 TA 合一张盘」的频控键（docs/09 §3.1：24h 内主动提示 1 次，可关） */
+const HEMING_HINT_KEY = 'ziwei_heming_hint_at';
+
 export default function ChartPage() {
+  const router = useRouter();
   const [chart, setChart] = useState<ZiweiChart | null>(null);
   const [selectedPalace, setSelectedPalace] = useState<Palace | null>(null);
   // 表单原始态留一份给分享卡（排盘 BirthInfo 的 hour 是时辰索引，分享卡要的是钟点）
   const [savedForm, setSavedForm] = useState<BirthFormState | null>(null);
+  // 起盘高潮点的一次性主动提示（24h 频控）：「想知道和 TA 的关系」是裂变第一引擎
+  const [hemingHint, setHemingHint] = useState(false);
+  // 「回到上次」/ 档案续问恢复的对话初值（docs/10 §5.4）
+  const [restoredMsgs, setRestoredMsgs] = useState<
+    { role: 'user' | 'assistant'; content: string; hidden?: boolean }[] | undefined>(undefined);
+  // 「回到上次」按钮的数据源：mounted 后再读 localStorage——渲染期读会与预渲染
+  // HTML（构建期无存储数据 = 无按钮）不一致，触发 hydration 回退整树重渲
+  //（web-view 有 hydrate 黑屏前科，docs/09 §8，不新增 mismatch 源）
+  const [lastSolo, setLastSolo] = useState<LastSession | null>(null);
+  useEffect(() => { setLastSolo(loadLastSession('solo')); }, []);
+
+  // 档案「用此盘继续问」恢复通道（docs/10 §5.1）：archive 页存盘 JSON 跳来，
+  // 一次性消费（读后即清）；sessionId 原样保留——追问落库按 session_id 归并同盘
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem('ziwei_archive_restore');
+      if (raw) {
+        sessionStorage.removeItem('ziwei_archive_restore');
+        const restored = JSON.parse(raw) as ZiweiChart;
+        if (restored && restored.palaces) setChart(restored);
+      }
+    } catch { /* 恢复失败走表单 */ }
+  }, []);
+
+  useEffect(() => {
+    if (!chart) return;
+    try {
+      const last = Number(localStorage.getItem(HEMING_HINT_KEY) || '0');
+      if (Date.now() - last < 24 * 3600 * 1000) return;
+      localStorage.setItem(HEMING_HINT_KEY, String(Date.now()));
+      setHemingHint(true);
+    } catch { /* 隐私模式按不提示处理 */ }
+  }, [chart]);
 
   // ── 未起盘：展示出生信息表单 ──
   if (!chart) {
@@ -48,9 +91,28 @@ export default function ChartPage() {
         <p style={{ color: '#888', marginBottom: 32, fontSize: 14, lineHeight: 1.7 }}>
           输入出生年月日时，排盘引擎即时生成命盘。
         </p>
+        {lastSolo && (
+          <button
+            type="button"
+            onClick={() => {
+              if (!lastSolo.chart) return;
+              setChart(lastSolo.chart as ZiweiChart);
+              setRestoredMsgs(lastSolo.messages ?? []);
+            }}
+            className="chart-reset-btn"
+            style={{ marginBottom: 16 }}
+          >
+            ✦ 回到上次 · 继续那张盘
+          </button>
+        )}
         <BirthForm
           onSubmit={(info: BirthInfo) => {
             const next = generateChart(info);
+            // 盘 id：一次起盘一个 uuid（问答额度/流年解锁的维度，重起即重置）
+            next.sessionId = newSessionId();
+            // 数据事件面（docs/11 §1）：一次起盘一记，漏斗「起盘→解读」的分子分母
+            reportEventOnce('chart_new', next.sessionId, { chart_kind: 'solo', from: 'fresh' });
+            touchSession(next.sessionId);
             setChart(next);
             // 起盘即静默刷新转发卡素材（浏览器环境此调用自动降级无副作用）：用户
             // 不点「✦ 分享」、直接点右上角「···」转发时，容器页消费的也是当前盘
@@ -91,10 +153,53 @@ export default function ChartPage() {
             birth={savedForm ? birthForShare(savedForm) : undefined}
             ch="chart"
           />
+          {/* 合盘邀请常驻入口（docs/09 §3.1：常驻入口收进 ShareButton 同排）：
+              生辰在手，发起即存 payload */}
+          <HemingInviteButton form={savedForm} />
+          {/* 云端档案入口（docs/10 §5.2）：非会员也可见，点进引导开会员——
+              这个功能自带的转化曝光位 */}
+          <button
+            type="button"
+            onClick={() => router.push('/archive')}
+            className="chart-reset-btn"
+          >
+            ✦ 云端档案
+          </button>
         </div>
 
+        {/* 起盘高潮点的一次性主动提示（24h 频控，可关） */}
+        {hemingHint && (
+          <div
+            className="heming-hint"
+            style={{
+              gridColumn: '1 / -1',
+              display: 'flex', alignItems: 'center', gap: '10px',
+              padding: '12px 16px', borderRadius: '12px',
+              background: 'rgba(122,92,190,0.08)',
+              border: '1px solid rgba(122,92,190,0.25)',
+              fontSize: '13px', color: 'var(--tx-1)',
+            }}
+          >
+            <span style={{ color: '#7a5cbe' }}>☯</span>
+            <span style={{ flex: 1, lineHeight: 1.6 }}>
+              盘已起好——<b>和 TA 合一张盘？</b>发给那个你想懂的人
+            </span>
+            <HemingInviteButton form={savedForm} label="合盘" />
+            <button
+              type="button"
+              aria-label="关闭"
+              onClick={() => setHemingHint(false)}
+              style={{
+                width: '22px', height: '22px', borderRadius: '50%', border: 'none',
+                background: 'rgba(122,92,190,0.12)', color: '#7a5cbe',
+                fontSize: '13px', cursor: 'pointer', lineHeight: 1, flexShrink: 0,
+              }}
+            >×</button>
+          </div>
+        )}
+
         <ChartBoard chart={chart} onPalaceSelect={setSelectedPalace} />
-        <InsightPanel chart={chart} selectedPalace={selectedPalace} />
+        <InsightPanel chart={chart} selectedPalace={selectedPalace} initialMessages={restoredMsgs} />
       </div>
 
       <style>{`
