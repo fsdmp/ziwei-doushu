@@ -2,6 +2,7 @@
 import { useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import BirthForm, { type BirthFormState } from '@/components/BirthForm';
+import ShareButton from '@/components/ShareButton';
 import { streamAI, type AIError } from '@/lib/ai';
 import { formToBirthInfo } from '@/lib/ziwei/share';
 import { generateChart as buildChart } from '@/lib/ziwei/algorithm';
@@ -288,8 +289,13 @@ export default function HemingPage() {
         {/* ═══ 针对合盘的追问聊天框（仅分析完成后显示）═══════════ */}
         {analysis && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '16px' }}>
-            <div style={{ fontSize: '11px', letterSpacing: '0.2em', color: 'var(--tx-3)', marginBottom: '4px' }}>
-              针对此次合盘继续追问
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+              <div style={{ fontSize: '11px', letterSpacing: '0.2em', color: 'var(--tx-3)' }}>
+                针对此次合盘继续追问
+              </div>
+              {/* 标题型分享（无单盘卡图）：合盘页未来的裂变主场景（合盘邀请）就挂这里，
+                  ShareButton 的 invite prop 玩法上线时传入即可 */}
+              <ShareButton title="紫微合盘 · 看看你们的缘分" ch="heming" label="✦ 分享合盘" />
             </div>
 
             {/* 快捷问题 */}

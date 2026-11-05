@@ -98,7 +98,7 @@ export default function ShareCardCanvas({ chart, birth, highlight }: ShareCardPr
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
           <div style={{ fontSize: '10px', color: '#6b5d3f', letterSpacing: '0.05em' }}>
-            {birth.year}年{birth.month}月{birth.day}日 · {birth.hour.padStart(2,'0')}:{birth.minute.padStart(2,'0')}
+            {birth.year}年{birth.month}月{birth.day}日 · {birth.hour ? <>{birth.hour.padStart(2,'0')}:{birth.minute.padStart(2,'0')}</> : '时辰不详'}
             <span style={{ margin: '0 4px', color: '#b8922a' }}>·</span>
             {birth.gender === 'male' ? '男命' : '女命'}
             {birth.city && <><span style={{ margin: '0 4px', color: '#b8922a' }}>·</span>{birth.city}</>}

@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import { ThemeProvider } from '@/components/ThemeProvider';
+import MiniBridgeFab from '@/components/MiniBridgeFab';
 import { SITE_URL } from '@/lib/site';
 
 // 手机浏览器 / 微信内置浏览器 / 小程序 webview 统一视口：
@@ -62,6 +63,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="min-h-screen">
         <ThemeProvider>
           {children}
+          {/* 小程序桥常驻测试入口：右缘悬浮，仅 web-view 环境渲染，联调完整体摘除 */}
+          <MiniBridgeFab />
         </ThemeProvider>
       </body>
     </html>

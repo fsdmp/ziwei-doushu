@@ -2,6 +2,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { streamAI, type AIError } from '@/lib/ai';
+import { isMiniProgram, openPaySheet, openRewardedAd } from '@/lib/mini-bridge';
 import type { ZiweiChart } from '@/lib/ziwei/types';
 
 interface Message {
@@ -26,7 +27,11 @@ export default function ChatPanel({ chart }: ChatPanelProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [inMini, setInMini] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // 小程序 web-view 环境才显示「看视频 / 充值」入口（浏览器访问本站时隐藏）
+  useEffect(() => { setInMini(isMiniProgram()) }, []);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -81,10 +86,26 @@ export default function ChatPanel({ chart }: ChatPanelProps) {
 
   return (
     <div className="flex flex-col h-full rounded-xl overflow-hidden card-glass">
-      {/* 标题 */}
-      <div className="px-4 py-3 flex-shrink-0" style={{ borderBottom: '1px solid var(--t-border)' }}>
-        <h3 className="text-xs font-medium tracking-widest" style={{ color: 'var(--t-gold)' }}>AI 命盘解读</h3>
-        <p className="text-[10px] mt-0.5" style={{ color: 'var(--t-faint)' }}>倪海厦正宗紫微斗数 · 智慧解析</p>
+      {/* 标题 + 小程序原生能力入口（仅 web-view 环境渲染：吊广告与收银台必须跳小程序原生页） */}
+      <div className="px-4 py-3 flex-shrink-0 flex items-center justify-between gap-2" style={{ borderBottom: '1px solid var(--t-border)' }}>
+        <div className="min-w-0">
+          <h3 className="text-xs font-medium tracking-widest" style={{ color: 'var(--t-gold)' }}>AI 命盘解读</h3>
+          <p className="text-[10px] mt-0.5" style={{ color: 'var(--t-faint)' }}>倪海厦正宗紫微斗数 · 智慧解析</p>
+        </div>
+        {inMini && (
+          <div className="flex gap-1.5 flex-shrink-0">
+            <button
+              onClick={openRewardedAd}
+              className="text-[10px] rounded-full px-2.5 py-1 transition-opacity active:opacity-60"
+              style={{ border: '1px solid rgba(212,168,67,0.35)', color: 'var(--t-gold)', background: 'transparent' }}
+            >看视频</button>
+            <button
+              onClick={() => openPaySheet('member')}
+              className="text-[10px] rounded-full px-2.5 py-1 transition-opacity active:opacity-60"
+              style={{ border: '1px solid rgba(212,168,67,0.35)', color: 'var(--t-gold)', background: 'transparent' }}
+            >充值</button>
+          </div>
+        )}
       </div>
 
       {/* 消息列表 */}
