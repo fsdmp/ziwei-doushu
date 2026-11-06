@@ -1,9 +1,10 @@
 'use client';
-import { useState, useMemo, useEffect, Fragment } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { BirthInfo } from '@/lib/ziwei/types';
 import { SHICHEN } from '@/lib/ziwei/constants';
 import { useTheme } from '@/components/ThemeProvider';
+import SelectField from '@/components/SelectField';
 import { PROVINCES } from '@/lib/ziwei/cities';
 import { lunarMonthDayCount, leapMonthOfLunarYear, lunarToSolar } from '@/lib/ziwei/lunar-solar';
 import { formToBirthInfo } from '@/lib/ziwei/share';
@@ -221,7 +222,8 @@ export default function BirthForm({ onSubmit, loading, initialData, onFormSave, 
     transition: 'border-color 0.2s',
   } as React.CSSProperties;
 
-  const errorInputStyle = { ...inputStyle, borderColor: errorClr };
+  // 校验描红由 SelectField 的 error prop 承接（原生 select 的 errorInputStyle 已随之移除）
+
 
   function FieldError({ msg }: { msg: string }) {
     return (
@@ -314,24 +316,24 @@ export default function BirthForm({ onSubmit, loading, initialData, onFormSave, 
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
           <div>
-            <select
+            {/* 原生 select 在小程序 web-view 里点开即关（弹层被宿主吞掉），下拉一律走 SelectField */}
+            <SelectField
               value={form.year}
-              onChange={e => { setForm(normalizeLunar({ ...form, year: e.target.value })); setTouched(t => ({ ...t, year: true })); }}
-              style={showErr('year') && errors.year ? errorInputStyle : inputStyle}
-              required
-            >
-              <option value="">年份</option>
-              {Array.from({ length: 127 }, (_, i) => 2026 - i).map(yr => (
-                <option key={yr} value={String(yr)}>{yr}</option>
-              ))}
-            </select>
+              onChange={v => { setForm(normalizeLunar({ ...form, year: v })); setTouched(t => ({ ...t, year: true })); }}
+              options={[
+                { value: '', label: '年份' },
+                ...Array.from({ length: 127 }, (_, i) => 2026 - i).map(yr => ({ value: String(yr), label: String(yr) })),
+              ]}
+              placeholder="年份"
+              error={showErr('year') && !!errors.year}
+              style={inputStyle}
+            />
             <FieldError msg={showErr('year') ? errors.year : ''} />
           </div>
           <div>
-            <select
+            <SelectField
               value={isLunar ? `${form.month}${form.lunarLeap ? 'L' : ''}` : form.month}
-              onChange={e => {
-                const v = e.target.value;
+              onChange={v => {
                 setTouched(t => ({ ...t, month: true }));
                 if (isLunar) {
                   // 农历月份值带 L 后缀表示闰月（如 "5L" = 闰五月）
@@ -340,40 +342,36 @@ export default function BirthForm({ onSubmit, loading, initialData, onFormSave, 
                   setForm({ ...form, month: v });
                 }
               }}
-              style={showErr('month') && errors.month ? errorInputStyle : inputStyle}
-              required
-            >
-              <option value="">月份</option>
-              {isLunar
-                ? Array.from({ length: 12 }, (_, i) => i + 1).map(mo => (
-                  <Fragment key={mo}>
-                    <option value={String(mo)}>{mo} 月</option>
-                    {/* 闰月选项只在该年确实有闰X月时出现 */}
-                    {leapMonth === mo && <option value={`${mo}L`}>闰{mo} 月</option>}
-                  </Fragment>
-                ))
-                : Array.from({ length: 12 }, (_, i) => i + 1).map(mo => (
-                  <option key={mo} value={String(mo)}>{mo} 月</option>
-                ))}
-            </select>
+              options={[
+                { value: '', label: '月份' },
+                ...Array.from({ length: 12 }, (_, i) => i + 1).flatMap(mo => {
+                  const base = [{ value: String(mo), label: `${mo} 月` }];
+                  // 闰月选项只在该年确实有闰X月时出现
+                  return leapMonth === mo ? [...base, { value: `${mo}L`, label: `闰${mo} 月` }] : base;
+                }),
+              ]}
+              placeholder="月份"
+              error={showErr('month') && !!errors.month}
+              style={inputStyle}
+            />
             <FieldError msg={showErr('month') ? errors.month : ''} />
           </div>
           <div>
-            <select
+            <SelectField
               value={form.day}
-              onChange={e => { setForm({ ...form, day: e.target.value }); setTouched(t => ({ ...t, day: true })); }}
-              style={showErr('day') && errors.day ? errorInputStyle : inputStyle}
-              required
-            >
-              <option value="">日期</option>
-              {/* 农历日按当月实际天数（29/30）生成，公历固定 31 天再靠校验兜底 */}
-              {(isLunar
-                ? Array.from({ length: lunarDayCount }, (_, i) => i + 1)
-                : Array.from({ length: 31 }, (_, i) => i + 1)
-              ).map(dy => (
-                <option key={dy} value={String(dy)}>{dy} 日</option>
-              ))}
-            </select>
+              onChange={v => { setForm({ ...form, day: v }); setTouched(t => ({ ...t, day: true })); }}
+              options={[
+                { value: '', label: '日期' },
+                // 农历日按当月实际天数（29/30）生成，公历固定 31 天再靠校验兜底
+                ...(isLunar
+                  ? Array.from({ length: lunarDayCount }, (_, i) => i + 1)
+                  : Array.from({ length: 31 }, (_, i) => i + 1)
+                ).map(dy => ({ value: String(dy), label: `${dy} 日` })),
+              ]}
+              placeholder="日期"
+              error={showErr('day') && !!errors.day}
+              style={inputStyle}
+            />
             <FieldError msg={showErr('day') ? errors.day : ''} />
           </div>
         </div>
@@ -383,31 +381,24 @@ export default function BirthForm({ onSubmit, loading, initialData, onFormSave, 
       <div style={{ marginBottom: '16px' }}>
         <label style={{ display: 'block', fontSize: '11px', color: labelClr, marginBottom: '6px', letterSpacing: '0.05em' }}>出生地点（用于真太阳时校正）</label>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-          <select
+          <SelectField
             value={form.province}
-            onChange={e => handleProvince(e.target.value)}
+            onChange={handleProvince}
+            options={[
+              { value: '', label: '省份 / 直辖市' },
+              ...PROVINCES.map(p => ({ value: p.name, label: p.name })),
+            ]}
+            placeholder="省份 / 直辖市"
             style={inputStyle}
-            onFocus={e => { e.target.style.borderColor = focusBorder; }}
-            onBlur={e => { e.target.style.borderColor = inputBorder; }}
-          >
-            <option value="">省份 / 直辖市</option>
-            {PROVINCES.map(p => (
-              <option key={p.name} value={p.name}>{p.name}</option>
-            ))}
-          </select>
-          <select
+          />
+          <SelectField
             value={form.city}
-            onChange={e => handleCity(e.target.value)}
+            onChange={handleCity}
             disabled={!form.province}
-            style={{ ...inputStyle, opacity: form.province ? 1 : 0.45 }}
-            onFocus={e => { e.target.style.borderColor = focusBorder; }}
-            onBlur={e => { e.target.style.borderColor = inputBorder; }}
-          >
-            <option value="">{form.province ? '城市' : '先选省份'}</option>
-            {cityList.map(c => (
-              <option key={c.name} value={c.name}>{c.name}</option>
-            ))}
-          </select>
+            options={cityList.map(c => ({ value: c.name, label: c.name }))}
+            placeholder={form.province ? '城市' : '先选省份'}
+            style={inputStyle}
+          />
         </div>
         <AnimatePresence mode="wait">
           {form.province ? (
@@ -439,24 +430,24 @@ export default function BirthForm({ onSubmit, loading, initialData, onFormSave, 
         <label style={{ display: 'block', fontSize: '11px', color: labelClr, marginBottom: '6px', letterSpacing: '0.05em' }}>出生时间（北京时间）</label>
         <div style={{ borderRadius: '14px', padding: '12px', background: panelBg, border: `1px solid ${panelBorder}`, opacity: form.unknownTime ? 0.45 : 1, pointerEvents: form.unknownTime ? 'none' : 'auto', transition: 'opacity 0.2s' }}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '8px' }}>
-            <select
+            <SelectField
               value={form.clockHour}
-              onChange={e => setForm({ ...form, clockHour: e.target.value })}
+              onChange={v => setForm({ ...form, clockHour: v })}
+              options={Array.from({ length: 24 }, (_, i) => i).map(h => ({
+                value: String(h), label: `${h.toString().padStart(2, '0')} 时`,
+              }))}
+              placeholder="时"
               style={inputStyle}
-            >
-              {Array.from({ length: 24 }, (_, i) => i).map(h => (
-                <option key={h} value={String(h)}>{h.toString().padStart(2, '0')} 时</option>
-              ))}
-            </select>
-            <select
+            />
+            <SelectField
               value={form.clockMinute}
-              onChange={e => setForm({ ...form, clockMinute: e.target.value })}
+              onChange={v => setForm({ ...form, clockMinute: v })}
+              options={Array.from({ length: 60 }, (_, i) => i).map(min => ({
+                value: String(min), label: `${min.toString().padStart(2, '0')} 分`,
+              }))}
+              placeholder="分"
               style={inputStyle}
-            >
-              {Array.from({ length: 60 }, (_, i) => i).map(min => (
-                <option key={min} value={String(min)}>{min.toString().padStart(2, '0')} 分</option>
-              ))}
-            </select>
+            />
           </div>
           {/* 真太阳时结果 */}
           <div style={{ textAlign: 'center', padding: '4px 0' }}>
