@@ -18,8 +18,10 @@ endif
 SERVER         ?= root@8.140.235.234
 SITE_MAP.prod       := https://ziwei.offiai.cn
 SITE_MAP.test       := https://test-ziwei.offiai.cn
+# 服务器真实拓扑（与正式站同构）：APISIX 按 host 分流 → 本机 openresty 实例
+#   prod → 127.0.0.1:8003（/usr/local/ziwei-static）   test → 127.0.0.1:8005（/usr/local/test-ziwei-static）
 REMOTE_MAP.prod     := /usr/local/ziwei-static/html
-REMOTE_MAP.test     := /usr/local/ziwei-static/html-test
+REMOTE_MAP.test     := /usr/local/test-ziwei-static/html
 SITE           ?= $(SITE_MAP.$(ENV))
 REMOTE_DIR     ?= $(REMOTE_MAP.$(ENV))
 
