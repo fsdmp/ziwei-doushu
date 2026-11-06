@@ -230,6 +230,57 @@ export function unlockByShare(kind: UnlockKind, key: string): void {
   unlockBy(kind, key, 'share');
 }
 
+/** 页面重回前台的多事件收口：web-view 从原生页（bridge）返回时 pageshow
+ *  在部分机型/基础库不触发（只触发 visibilitychange 或 focus）——三事件任一
+ *  即回调（800ms 去抖防三事件连发重复跑）。返回注销函数。 */
+export function onPageVisible(cb: () => void): () => void {
+  let last = 0;
+  const fire = () => {
+    const now = Date.now();
+    if (now - last < 800) return;
+    last = now;
+    cb();
+  };
+  const onVis = () => { if (document.visibilityState === 'visible') fire(); };
+  window.addEventListener('pageshow', fire);
+  document.addEventListener('visibilitychange', onVis);
+  window.addEventListener('focus', fire);
+  return () => {
+    window.removeEventListener('pageshow', fire);
+    document.removeEventListener('visibilitychange', onVis);
+    window.removeEventListener('focus', fire);
+  };
+}
+
+/** 分享钥匙观察器（share_panel=true 引导式）：跳 bridge 后台账何时落不确定
+ *  （用户在分享页停留时长不定、返回事件可能不触发）——回前台事件 + 2.5s
+ *  轮询双保险，命中台账即回调并自动停止；60s 观察窗后放弃（墙保留可重点）。
+ *  返回停止函数（重复发起时先停上一个）。 */
+export function watchUnlock(kind: UnlockKind, key: string, onUnlocked: () => void): () => void {
+  let stopped = false;
+  let fired = false;
+  const stop = () => {
+    if (stopped) return;
+    stopped = true;
+    offEvents();
+    clearInterval(timer);
+    clearTimeout(giveUp);
+  };
+  const check = async () => {
+    if (stopped || fired) return;
+    // 本地已置位（会员/广告先解过）直接兑现，省一次网络
+    const localDone = kind === 'qna_extra' ? qnaUnlocked(key) : liunianUnlocked(key);
+    if (localDone) { fired = true; onUnlocked(); stop(); return; }
+    const ok = await fetchUnlockStatus(kind, key);
+    if (ok && !stopped && !fired) { fired = true; onUnlocked(); stop(); }
+  };
+  const offEvents = onPageVisible(check);
+  const timer = setInterval(check, 2500);
+  const giveUp = setTimeout(stop, 60_000);
+  check();
+  return stop;
+}
+
 /** 台账回查（引导式分享解锁，docs/10 §4）：share_panel=true 时分享解锁不再
  *  点按钮即给——跳 bridge 后用户点了「发送给朋友」才落账（bridge 上报），
  *  pageshow 拉本口判真正的解锁时点；未点转发直接返回则 false（锁保留）。 */

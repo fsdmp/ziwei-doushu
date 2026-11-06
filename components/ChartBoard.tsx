@@ -7,7 +7,7 @@ import { Solar } from 'lunar-javascript';
 import {
   chartKey, liunianUnlocked, markLiunianUnlocked, unlockByShare,
   isMember, unlockBy, refreshMember, openAdUnlock, confirmPendingAdUnlock,
-  sharePanelEnabled, fetchUnlockStatus,
+  sharePanelEnabled, fetchUnlockStatus, onPageVisible, watchUnlock,
 } from '@/lib/unlock';
 import { reportEventOnce } from '@/lib/events';
 import { pushShareCard, openPaySheet, openSharePanel, miniToast } from '@/lib/mini-bridge';
@@ -87,41 +87,34 @@ export default function ChartBoard({ chart, onStarSelect, onPalaceSelect, onSiHu
       if (liunianLocked) setLiunianLocked(false);
     }
   }, [cKey, liunianLocked]);
+  // 续看（与问答「挂起续答」同理）：任一钥匙生效后收锁并直接跳到用户当初
+  // 想看的年份——不让人解锁完还得再点一次年份。组件级声明：回前台效果与
+  // 分享 watchUnlock 回调共用
+  const resumeLiunian = () => {
+    const y = unlockAskRef.current;
+    setLiunianLocked(false);
+    setUnlockAsk(null);
+    if (y !== null) setLiunianYear(y);
+  };
+  // 回前台多事件收口（web-view 返回 pageshow 不可靠，见 onPageVisible 注释）：
+  // 会员收锁 + 广告钥匙回查；分享钥匙回查归发起时挂的 watchUnlock
   useEffect(() => {
-    const onShow = () => {
-      // 续看（与问答「挂起续答」同理）：任一钥匙生效后收锁并直接跳到用户当初
-      // 想看的年份——不让人解锁完还得再点一次年份
-      const resumeLiunian = () => {
-        const y = unlockAskRef.current;
-        setLiunianLocked(false);
-        setUnlockAsk(null);
-        if (y !== null) setLiunianYear(y);
-      };
+    const off = onPageVisible(() => {
       refreshMember().then(() => {
         if (isMember()) resumeLiunian();
       });
-      // 广告钥匙回查：只认流年锁的 pending（问答的归 InsightPanel）
       confirmPendingAdUnlock('liunian_all').then(ok => {
         if (ok) resumeLiunian();
       });
-      // 分享钥匙回查（引导式，share_panel=true）：bridge 里点了「发送给朋友」
-      // 台账才有行——命中即解锁并跳到想看的年份；没点直接返回则锁面保留
-      if (liunianLockedRef.current) {
-        fetchUnlockStatus('liunian_all', cKeyRef.current).then(ok => {
-          if (ok) {
-            markLiunianUnlocked(cKeyRef.current);
-            resumeLiunian();
-          }
-        });
-      }
-    };
-    window.addEventListener('pageshow', onShow);
-    return () => window.removeEventListener('pageshow', onShow);
-  }, []);
+    });
+    return off;
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   // 想去但被锁的年份（解锁面板的钩子文案用「解锁 {year} 年的你」）
   const [unlockAsk, setUnlockAsk] = useState<number | null>(null);
   // 分享引导条（share_panel=false 期点即给后的「已分享·解锁」呈现）
   const [shareGuide, setShareGuide] = useState<string | null>(null);
+  // 分享钥匙观察器停止句柄（重复发起先停上一个；60s 观察窗自动放弃）
+  const stopWatchRef = useRef<(() => void) | null>(null);
   // 想看年份/锁态/盘 id 的镜像 ref：pageshow 监听只挂一次，读 state 会锁死首帧值
   const unlockAskRef = useRef<number | null>(null);
   const liunianLockedRef = useRef(false);
@@ -148,8 +141,13 @@ export default function ChartBoard({ chart, onStarSelect, onPalaceSelect, onSiHu
     pushShareCard({ title, ch: 'liunian' });
     if (sharePanelEnabled()) {
       // 引导式分享解锁（docs/10 §4）：点按钮不解锁——跳 bridge，点了「发送
-      // 给朋友」才落账；回来 pageshow 回查命中才解锁并跳到想看的年份。没点
-      // 转发直接返回：锁面保留
+      // 给朋友」才落账；watchUnlock 事件+轮询双保险（返回时 pageshow 可能
+      // 不触发），命中台账才解锁并跳到想看的年份。没点转发直接返回：锁面保留
+      stopWatchRef.current?.();
+      stopWatchRef.current = watchUnlock('liunian_all', cKey, () => {
+        markLiunianUnlocked(cKeyRef.current);
+        resumeLiunian();
+      });
       openSharePanel({ title, ch: 'liunian', lock: { kind: 'liunian_all', chartKey: cKey } });
       return;
     }

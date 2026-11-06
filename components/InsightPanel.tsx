@@ -7,6 +7,7 @@ import {
   chartKey, qnaCanAsk, qnaUnlocked, recordQnaAsk, markQnaUnlocked, unlockByShare,
   QNA_FREE_LIMIT, qnaUsed, isMember, unlockBy, refreshMember,
   openAdUnlock, confirmPendingAdUnlock, sharePanelEnabled, fetchUnlockStatus,
+  onPageVisible, watchUnlock,
 } from '@/lib/unlock';
 import { openPaySheet, openSharePanel, miniToast } from '@/lib/mini-bridge';
 import ShareGuideTip from './ShareGuideTip';
@@ -216,6 +217,8 @@ export default function InsightPanel({ chart, selectedPalace, selectedSiHua, ini
   const pendingAskRef = useRef<{ text: string; hidden: boolean } | null>(null);
   // pageshow 监听闭包用的镜像 ref（只挂一次的监听读 state 会锁死首帧值）
   const walledRef = useRef(false);
+  // 分享钥匙观察器的停止句柄（重复发起先停上一个，60s 观察窗自动放弃）
+  const stopWatchRef = useRef<(() => void) | null>(null);
   const cKeyRef = useRef('');
   useEffect(() => { walledRef.current = walled; }, [walled]);
   useEffect(() => { cKeyRef.current = cKey; }, [cKey]);
@@ -223,8 +226,11 @@ export default function InsightPanel({ chart, selectedPalace, selectedSiHua, ini
   const resumeRef = useRef<() => void>(() => {});
   // 会员支付回来自动收墙（docs/10 §5.3）：pageshow（bridge 收银台 navigateBack
   // 回 H5）刷新 member 态，已开通则墙即刻消失——「会员直接用，不阻塞」
+  // 回前台多事件收口（web-view 返回 pageshow 不可靠，见 onPageVisible 注释）：
+  // 会员收墙续答 + 广告钥匙回查；分享钥匙的回查不在此——发起时挂的
+  // watchUnlock（事件+轮询）覆盖，返回时机不定也能在 2.5s 内兑现
   useEffect(() => {
-    const onShow = () => {
+    const off = onPageVisible(() => {
       refreshMember().then(() => {
         if (isMember()) { setWalled(false); resumeRef.current(); }
       });
@@ -233,20 +239,8 @@ export default function InsightPanel({ chart, selectedPalace, selectedSiHua, ini
       confirmPendingAdUnlock('qna_extra').then(ok => {
         if (ok) { setWalled(false); resumeRef.current(); }
       });
-      // 分享钥匙回查（引导式，share_panel=true）：bridge 里点了「发送给朋友」
-      // 台账才有行——命中即解锁收墙续答；没点直接返回则墙保留
-      if (walledRef.current) {
-        fetchUnlockStatus('qna_extra', cKeyRef.current).then(ok => {
-          if (ok) {
-            markQnaUnlocked(cKeyRef.current);
-            setWalled(false);
-            resumeRef.current();
-          }
-        });
-      }
-    };
-    window.addEventListener('pageshow', onShow);
-    return () => window.removeEventListener('pageshow', onShow);
+    });
+    return off;
   }, []);
   const messagesRef = useRef<Message[]>([]); // always-current copy for closures
   const loadingRef = useRef(false);
@@ -461,8 +455,14 @@ ${selectedSiHua.starName}化${selectedSiHua.siHua}落在【${palaceName}】，�
     pushShareCard({ title, ch: 'qna' });
     if (sharePanelEnabled()) {
       // 引导式分享解锁（docs/10 §4）：点按钮不解锁——跳 bridge，用户点了
-      // 「发送给朋友」才落账；回来 pageshow 回查命中才收墙续答。没点转发
-      // 直接返回：墙保留（这才是「引导分享」的语义）
+      // 「发送给朋友」才落账；watchUnlock 事件+轮询双保险（返回时 pageshow
+      // 可能不触发），命中台账才收墙续答。没点转发直接返回：墙保留
+      stopWatchRef.current?.();
+      stopWatchRef.current = watchUnlock('qna_extra', cKey, () => {
+        markQnaUnlocked(cKeyRef.current);
+        setWalled(false);
+        resumeRef.current();
+      });
       openSharePanel({ title, ch: 'qna', lock: { kind: 'qna_extra', chartKey: cKey } });
       return;
     }
