@@ -9,6 +9,7 @@ import {
   openAdUnlock, confirmPendingAdUnlock, sharePanelEnabled, fetchUnlockStatus,
 } from '@/lib/unlock';
 import { openPaySheet, openSharePanel, miniToast } from '@/lib/mini-bridge';
+import ShareGuideTip from './ShareGuideTip';
 import { saveLastSession } from '@/lib/ziwei/history';
 import { reportEventOnce, reportEvent } from '@/lib/events';
 import type { ZiweiChart, Palace } from '@/lib/ziwei/types';
@@ -209,6 +210,9 @@ export default function InsightPanel({ chart, selectedPalace, selectedSiHua, ini
   // 挂起问题续答（撞墙→解锁后卡住的修复）：撞墙时这一问存进 pendingAskRef，
   // 任一钥匙（分享/会员/广告）生效后自动重发。resumeRef 指向每次渲染的最新
   // 续答函数——pageshow 监听只挂一次，直接引用会锁死首帧闭包的 cKey/chart
+  // 分享引导条（share_panel=false 期：点即给后弹底部引导，让「分享」在感知上
+  // 是解锁流程的一环；true 模式由 bridge 分享页承担，组件自渲染为 null）
+  const [shareGuide, setShareGuide] = useState<string | null>(null);
   const pendingAskRef = useRef<{ text: string; hidden: boolean } | null>(null);
   // pageshow 监听闭包用的镜像 ref（只挂一次的监听读 state 会锁死首帧值）
   const walledRef = useRef(false);
@@ -467,7 +471,9 @@ ${selectedSiHua.starName}化${selectedSiHua.siHua}落在【${palaceName}】，�
     markQnaUnlocked(cKey);
     setWalled(false);
     resumePendingAsk();
-    miniToast('✦ 已解锁 · 继续解读');
+    // 分享引导（2026-11-06）：底部条呈现「已分享·解锁成功」+ 发给朋友入口——
+    // 不分享也已解锁，但感知上分享是解锁动作的一部分
+    setShareGuide(title);
   };
 
   const handleTopicClick = (topicKey: string) => {
@@ -686,6 +692,14 @@ ${selectedSiHua.starName}化${selectedSiHua.siHua}落在【${palaceName}】，�
           </button>
         </div>
       </div>
+
+      <ShareGuideTip
+        open={shareGuide !== null}
+        onClose={() => setShareGuide(null)}
+        title={shareGuide ?? ''}
+        ch="qna"
+        sub="盘的解读已解锁 · 分享给朋友，TA 也会想测一张"
+      />
 
     </div>
   );

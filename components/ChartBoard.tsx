@@ -11,6 +11,7 @@ import {
 } from '@/lib/unlock';
 import { reportEventOnce } from '@/lib/events';
 import { pushShareCard, openPaySheet, openSharePanel, miniToast } from '@/lib/mini-bridge';
+import ShareGuideTip from './ShareGuideTip';
 import PalaceCell from './PalaceCell';
 import TimeNav, { type TimeView, getYearStemIndex, buildSiHuaOverlay } from './TimeNav';
 
@@ -119,6 +120,8 @@ export default function ChartBoard({ chart, onStarSelect, onPalaceSelect, onSiHu
   }, []);
   // 想去但被锁的年份（解锁面板的钩子文案用「解锁 {year} 年的你」）
   const [unlockAsk, setUnlockAsk] = useState<number | null>(null);
+  // 分享引导条（share_panel=false 期点即给后的「已分享·解锁」呈现）
+  const [shareGuide, setShareGuide] = useState<string | null>(null);
   // 想看年份/锁态/盘 id 的镜像 ref：pageshow 监听只挂一次，读 state 会锁死首帧值
   const unlockAskRef = useRef<number | null>(null);
   const liunianLockedRef = useRef(false);
@@ -150,13 +153,13 @@ export default function ChartBoard({ chart, onStarSelect, onPalaceSelect, onSiHu
       openSharePanel({ title, ch: 'liunian', lock: { kind: 'liunian_all', chartKey: cKey } });
       return;
     }
-    // 旧版线上（bridge 未发版）：点即给（合规口径不变）
-    miniToast(`✦ 已解锁 · 立刻看 ${unlockAsk} 年`);
+    // 旧版线上（bridge 未发版）：点即给（合规口径不变）+ 底部分享引导条
     unlockByShare('liunian_all', cKey);
     markLiunianUnlocked(cKey);
     setLiunianLocked(false);
     setLiunianYear(unlockAsk);
     setUnlockAsk(null);
+    setShareGuide(title);
   };
 
   // 展示用原始农历日期（Solar→Lunar 现算）。不用 chart.lunarInfo——那是安星口径
@@ -482,6 +485,13 @@ export default function ChartBoard({ chart, onStarSelect, onPalaceSelect, onSiHu
           点击宫位看三方四正
         </span>
       </motion.div>
+      <ShareGuideTip
+        open={shareGuide !== null}
+        onClose={() => setShareGuide(null)}
+        title={shareGuide ?? ''}
+        ch="liunian"
+        sub={`流年已解锁 · ${unlockAskRef.current ?? ''} 年的自己，分享给朋友看`}
+      />
     </div>
   );
 }
