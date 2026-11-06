@@ -144,12 +144,14 @@ export async function confirmPendingAdUnlock(kind: UnlockKind): Promise<boolean>
       const byRef = await requestJSON<{ recorded?: boolean }>(
         `/api/v1/ziwei/ad/summary?ref=${encodeURIComponent(p.ref)}`, 'GET');
       if (byRef?.recorded) { unlock(); return true; }
-      // ref 未命中（旧 bridge / 记账慢）→ 总数差分兜底
-      const sum = await requestJSON<{ watched_total?: number }>(
-        '/api/v1/ziwei/ad/summary', 'GET');
-      const total = sum?.watched_total ?? 0;
-      if (p.beforeTotal >= 0 ? total > p.beforeTotal : total > 0) {
-        unlock(); return true;
+      // ref 未命中（旧 bridge / 记账慢）→ 总数差分兜底。仅当点前总数拍到过
+      //（>=0）才允许差分——拍不到时不能退化为「有历史观看就算」（白给），
+      // 宁可本次不解锁（2026-11-06 修：-1 分支恒真的漏洞）
+      if (p.beforeTotal >= 0) {
+        const sum = await requestJSON<{ watched_total?: number }>(
+          '/api/v1/ziwei/ad/summary', 'GET');
+        const total = sum?.watched_total ?? -1;
+        if (total > p.beforeTotal) { unlock(); return true; }
       }
     } catch { /* 网络抖动：退避重查 */ }
     await new Promise(res => setTimeout(res, 400));
