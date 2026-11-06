@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 import { requestJSON } from '@/lib/ai';
 import { openPaySheet } from '@/lib/mini-bridge';
 import { refreshMember, isMember, touchSession } from '@/lib/unlock';
-import { loadLastSession } from '@/lib/ziwei/history';
+import { loadLastSession, type LastSession } from '@/lib/ziwei/history';
 import ChartBoard from '@/components/ChartBoard';
 import type { ZiweiChart } from '@/lib/ziwei/types';
 
@@ -12,7 +12,9 @@ import type { ZiweiChart } from '@/lib/ziwei/types';
  * 云端档案（docs/10 §5）：会员的起盘/合盘/解读云端留存。非会员可见入口，
  * 点进引导开会员（openPaySheet 收银台通道）——档案是这个功能自带的转化曝光位。
  * 三态：列表（卡片流，20/页）→ 详情（盘面只读 + 问答流水 + 用此盘继续问）；
- * 非成员态 = 引导层。读路径不校验会员（过期冻结可看），非会员列表恒空（零落库）。
+ * 非成员态 = 引导层，本地有「上一次」时拆两段对比式转化（免费回看最近一次 ↔
+ * 会员留存每一次，2026-11-06）。读路径不校验会员（过期冻结可看），非会员
+ * 列表恒空（零落库）。
  */
 
 interface ArchiveItem {
@@ -35,6 +37,10 @@ interface ArchiveDetail {
   msgs: { question: string; answer: string; created_at: string }[];
 }
 
+/** 非会员「回看上一次」的数据源（docs/10 §5.4 本地会话）：solo/heming 各存
+ *  最近 1 条，取 savedAt 较新者展示。chart 缺失的脏数据视为无记录。 */
+type LastPick = { kind: 'solo' | 'heming'; data: LastSession };
+
 export default function ArchivePage() {
   const router = useRouter();
   const [member, setMember] = useState<boolean | null>(null); // null=加载中
@@ -45,6 +51,17 @@ export default function ArchivePage() {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState('');
   const [justImported, setJustImported] = useState(false);
+  // 非会员「回看上一次」：mounted 后再读 localStorage——渲染期读会与预渲染
+  // HTML 不一致触发 hydration 回退（/chart 同款处理，不新增 mismatch 源）
+  const [lastPick, setLastPick] = useState<LastPick | null>(null);
+  useEffect(() => {
+    const cands: LastPick[] = [];
+    for (const kind of ['solo', 'heming'] as const) {
+      const last = loadLastSession(kind);
+      if (last?.chart) cands.push({ kind, data: last });
+    }
+    setLastPick(cands.length ? cands.reduce((a, b) => (b.data.savedAt > a.data.savedAt ? b : a)) : null);
+  }, []);
 
   const fetchList = useCallback(async () => {
     try {
@@ -146,6 +163,27 @@ export default function ArchivePage() {
     } catch { /* 存不进直接跳，起盘态由用户自起 */ router.push(toHeming ? '/heming' : '/chart'); }
   }, []);
 
+  // 非会员「回看上一次」（docs/10 §5.4）：本地最近一条直达恢复——直接复用
+  // 档案续问的 sessionStorage 通道与消费链路（载荷形状不变：只带盘，跳过去
+  // 问答新开一轮，与会员「用此盘继续问」同款）；touchSession 抬白名单与
+  // continueAsk 同因（老盘不抬会被启动 cleanup 重锁问答计数/流年键）。老数据
+  // 无 sessionId 时跳过 touch 照常恢复。零云端请求（非会员零落库不破）
+  const viewLast = useCallback(() => {
+    if (!lastPick?.data.chart) return;
+    const toHeming = lastPick.kind === 'heming' && !!lastPick.data.chartB;
+    try {
+      if (toHeming) {
+        sessionStorage.setItem('ziwei_archive_restore_heming',
+          JSON.stringify({ chartA: lastPick.data.chart, chartB: lastPick.data.chartB }));
+      } else {
+        sessionStorage.setItem('ziwei_archive_restore', JSON.stringify(lastPick.data.chart));
+      }
+      const sid = (lastPick.data.chart as ZiweiChart).sessionId;
+      if (sid) touchSession(sid);
+      router.push(toHeming ? '/heming' : '/chart');
+    } catch { /* 存不进直接跳，起盘态由用户自起 */ router.push(toHeming ? '/heming' : '/chart'); }
+  }, [lastPick, router]);
+
   const cardStyle = {
     background: 'var(--t-card, rgba(255,255,255,0.04))',
     border: '1px solid var(--t-border, rgba(255,255,255,0.1))',
@@ -158,7 +196,11 @@ export default function ArchivePage() {
         <div>
           <h1 style={{ fontSize: 20, fontWeight: 700 }}>云端档案</h1>
           <p style={{ fontSize: 12, color: 'var(--t-faint, #999)', marginTop: 2 }}>
-            {member ? '起盘 · 合盘 · 解读，永久留存' : '会员专属 · 命盘与解读云端永存'}
+            {member
+              ? '起盘 · 合盘 · 解读，永久留存'
+              : lastPick
+                ? '上一次可回看 · 每一次留云端'
+                : '会员专属 · 命盘与解读云端永存'}
           </p>
         </div>
         <button
@@ -175,11 +217,39 @@ export default function ArchivePage() {
         <div style={{ textAlign: 'center', padding: '48px 0', fontSize: 13, color: 'var(--t-faint, #999)' }}>…</div>
       )}
 
-      {/* 非会员：引导层（档案功能的转化曝光位，docs/10 §5.2） */}
+      {/* 非会员：引导层（档案功能的转化曝光位，docs/10 §5.2）。
+          本地有「上一次」时拆两段对比式转化（2026-11-06）：先给免费甜头
+          （本机留着最近一次，可回看），再给会员对比（每一次都留云端） */}
       {member === false && (
         <div style={{ ...cardStyle, padding: 28, textAlign: 'center' }}>
           <div style={{ fontSize: 34, marginBottom: 8 }}>✦</div>
           <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 10 }}>紫微云端档案</div>
+          {lastPick ? (
+            <>
+              <div style={{ fontSize: 13, lineHeight: 1.9, color: 'var(--t-text, #ccc)' }}>
+                上一次起的盘还留在本机——<br />最近一次，随时回看、继续问。
+              </div>
+              <button
+                onClick={viewLast}
+                className="w-full py-2.5 rounded-xl"
+                style={{
+                  fontSize: 13, fontWeight: 600, letterSpacing: '0.08em', cursor: 'pointer',
+                  border: '1px solid var(--t-border, rgba(255,255,255,0.2))',
+                  background: 'transparent', color: 'inherit', marginTop: 12, marginBottom: 16,
+                }}
+              >
+                ✦ 回看上一次 · 继续那张盘
+              </button>
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 10,
+                margin: '0 0 14px', color: 'var(--t-faint, #999)', fontSize: 11, letterSpacing: '0.15em',
+              }}>
+                <span style={{ flex: 1, height: '1px', background: 'var(--t-border, rgba(255,255,255,0.1))' }} />
+                开通会员后
+                <span style={{ flex: 1, height: '1px', background: 'var(--t-border, rgba(255,255,255,0.1))' }} />
+              </div>
+            </>
+          ) : null}
           <div style={{ fontSize: 13, lineHeight: 1.9, color: 'var(--t-text, #ccc)', marginBottom: 20 }}>
             每一次起盘、每一次合盘、每一句解读——<br />
             云端永久留存，换手机也在。<br />
@@ -197,6 +267,11 @@ export default function ArchivePage() {
           >
             开通会员 · 解锁云端档案
           </button>
+          {!lastPick && (
+            <div style={{ fontSize: 11, color: 'var(--t-faint, #999)', marginTop: 10 }}>
+              起一张盘后，最近一次的记录会留在这里，随时可回看。
+            </div>
+          )}
           <div style={{ fontSize: 11, color: 'var(--t-faint, #999)', marginTop: 10 }}>
             已免费的一切照旧 · 本地记录不受影响
           </div>
