@@ -1,10 +1,17 @@
-# ziwei-doushu 线上部署（8.140.235.234 · ziwei.offiai.cn）
+# ziwei-doushu 线上部署（8.140.235.234 · ziwei.offiai.cn / test-ziwei.offiai.cn）
 
-部署形态：**纯静态站**——Next.js `output: 'export'` 构建出 `out/`，rsync 到 nginx 目录
-`/usr/local/ziwei-static/html/`。无服务进程、无重启、无数据库；AI 解读由前端直连
-mistsee 线上后端（`mistsee.offiai.cn`，见 `lib/ai.ts`）。
+部署形态：**纯静态站**——Next.js `output: 'export'` 构建出 `out/`，rsync 到 nginx 目录。
+无服务进程、无重启、无数据库；AI 解读由前端直连 mistsee 线上后端
+（`mistsee.offiai.cn`，见 `lib/ai.ts`——两环境共用同一后端，测试只是换了 H5 站点）。
 
-与 mistsee 同机同 nginx（证书复用 `/etc/nginx/cert/offiai.cn.*`）。
+两个环境**同机同 nginx**，只按域名与目录区分：
+
+| 环境 | 域名 | nginx root | 发布命令 |
+| --- | --- | --- | --- |
+| 正式 | `ziwei.offiai.cn` | `/usr/local/ziwei-static/html` | `make release` |
+| 测试 | `test-ziwei.offiai.cn` | `/usr/local/ziwei-static/html-test` | `make release ENV=test` |
+
+证书复用 `/etc/nginx/cert/offiai.cn.*`（需覆盖 `test-ziwei` 子域，见下文测试环境节）。
 
 > **首次部署记录（2026-11-02，commit 0d0ef11）**：全站静态导出上 nginx，
 > 手动 npm run build + 上传。本工具链（Makefile + 本文档）为后续日常发布而建，
@@ -13,12 +20,16 @@ mistsee 线上后端（`mistsee.offiai.cn`，见 `lib/ai.ts`）。
 ## 日常发布
 
 ```bash
-make release    # 一键：build + rsync + 线上验证（指纹一致 + 关键路径 200）
-make upload     # 只传不验（构建 + rsync，不碰验证）
-make verify     # 只验线上（需本地已有 out/，对比构建指纹）
+make release              # 正式环境：build + rsync + 线上验证（指纹一致 + 关键路径 200）
+make release ENV=test     # 测试环境：同流程，目标换成 test-ziwei.offiai.cn
+make upload               # 只传不验（构建 + rsync，不碰验证）
+make verify               # 只验线上（需本地已有 out/，对比构建指纹）
 ```
 
-参数可覆盖：`make release SERVER=root@1.2.3.4 REMOTE_DIR=/srv/ziwei/html SITE=https://xxx`
+`ENV`（prod 默认 / test）决定 `SITE` 与 `REMOTE_DIR` 的默认值并注入构建
+（`NEXT_PUBLIC_SITE_URL`，压过 `.env.production`——sitemap/canonical/分享链接/
+合盘邀请链接全由它取值，两环境各自正确）。其余参数可覆盖：
+`make release ENV=test SERVER=root@1.2.3.4 REMOTE_DIR=/srv/ziwei/html-test`
 
 **验证原理（静态站版 healthz）**：Next 导出的 HTML 无集中 buildId，
 但每个 chunk 文件名带内容 hash（turbopack 形如 `2mmpezlrfmbu5.js`，
@@ -49,6 +60,43 @@ webpack 形如 `main-app-1175c1c0d82b673a.js`，文件名即指纹）。`make ve
 3. 目录：`mkdir -p /usr/local/ziwei-static/html`
 4. 微信 MP 后台：业务域名配置会往该目录放 `MP_verify_*.txt`（rsync 已排除，勿手动清理）
 5. 发布：`make release`
+
+## 测试环境（test-ziwei.offiai.cn，2026-11-06 增）
+
+测试站与正式站同机，只按域名/目录区分；**谁能看到测试站由 mistsee 服务端的
+uid 白名单决定**——白名单用户在小程序里打开紫微入口时，`GET /ziwei/web`
+下发的是测试站地址，其余用户照旧正式站。整条链路：
+
+```
+mistsee .env 配 MISTSEE_GRAY_TEST_UID_LIST=<uid 逗号分隔>          ← 谁走测试
+mistsee .env 配 MISTSEE_ZIWEI_WEB_URL_FULL_TEST=https://test-ziwei.offiai.cn
+make release（mistsee 仓库，重启生效）
+   ↓ 白名单用户小程序打开紫微 → web-view 加载 test-ziwei.offiai.cn
+本仓库 make release ENV=test                                        ← 测试站内容
+   ↓ H5 直连 mistsee.offiai.cn 调 AI（同一后端；服务端 CORS 已放行测试站 origin）
+```
+
+### 首次开通（一次性）
+
+1. **DNS**：`test-ziwei A 8.140.235.234`（offiai.cn 控制台；子域共享主域备案）
+2. **证书**：确认 `/etc/nginx/cert/offiai.cn.*` 是否 `*.offiai.cn` 通配符
+   （`openssl x509 -in /etc/nginx/cert/offiai.cn.pem -noout -text | grep -A1 "Subject Alternative Name"`）。
+   覆盖则直接用；不覆盖需先签一张含 `test-ziwei.offiai.cn` 的证书，否则 web-view 白屏
+3. **nginx**：`deploy/nginx-ziwei.conf` 已含测试站 server 块（root
+   `/usr/local/ziwei-static/html-test`）→ 同步到 `/etc/nginx/conf.d/ziwei.conf` 后
+   `nginx -t && nginx -s reload`
+4. **目录**：`mkdir -p /usr/local/ziwei-static/html-test`
+5. **微信 MP 后台（关键，漏了 web-view 打不开）**：「开发管理 → 业务域名」添加
+   `test-ziwei.offiai.cn`，按提示下载 `MP_verify_*.txt` 放进 `html-test/`
+   （rsync `--delete` 已排除该文件，之后不会被清掉）
+6. **mistsee 侧**：按上面链路配两个 env 并 `make release`（mistsee 仓库）
+7. **发布测试站内容**：`make release ENV=test`
+
+### 日常
+
+- 测试站出新版：`make release ENV=test`（与正式互不影响，产物目录独立）
+- 加/减测试用户：只改 mistsee 的 `MISTSEE_GRAY_TEST_UID_LIST` 重启，本仓库不动
+- 测试站**无访问控制**：拿到域名谁都能看，勿放敏感内容/未公开数据
 
 ## 小程序端发布（另一条线，不在本仓库）
 
