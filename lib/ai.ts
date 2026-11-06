@@ -9,6 +9,11 @@
  *   才取就晚了），这里保留同款兜底（直开无脚本的极端场景），同键幂等。
  *   后端 fail-closed：无 token / token 过期返回 401（内容送检需要真实 openid），
  *   前端提示回小程序重新打开；排盘本身不受影响。
+ * - 宿主版本：服务端在 /ziwei/web 下发的 URL query 里拼 mp_env/mp_ver（宿主
+ *   小程序版本，web-view 隔离 JS 环境，URL 是唯一通道），layout 首帧脚本存
+ *   sessionStorage。所有请求回发 X-App-Env/X-App-Version——与小程序原生请求
+ *   （mistsee app request.ts）同头名，服务端日志/灰度对两路流量同口径；未存
+ *   （旧版小程序 URL 无参、直开浏览器）不带头，与服务端字段缺席语义一致。
  * - SSE 协议：data: {"delta":{"text":"…"}}，流尾 data: [DONE]。
  */
 
@@ -43,6 +48,19 @@ function authHeaders(): Record<string, string> {
   } catch { return {}; }
 }
 
+/** 宿主小程序版本回发头：只读 layout 首帧脚本存的 sessionStorage（版本非敏感、
+ *  query 不清除也不必二次捕获——站内导航后 query 已丢，捕获兜底永远捕不到新值）。
+ *  SSR / 未存（旧版小程序、直开浏览器）返回空对象，不带头。 */
+function hostVersionHeaders(): Record<string, string> {
+  if (typeof window === 'undefined') return {};
+  try {
+    const env = sessionStorage.getItem('ziwei_mp_env');
+    const ver = sessionStorage.getItem('ziwei_mp_ver');
+    if (!env && !ver) return {};
+    return { ...(env ? { 'X-App-Env': env } : {}), ...(ver ? { 'X-App-Version': ver } : {}) };
+  } catch { return {}; }
+}
+
 export interface AIError extends Error {
   /**
    * 'auth-expired'：登录态缺失/过期（后端 fail-closed，需回小程序重新打开）；
@@ -70,7 +88,7 @@ export async function requestJSON<T>(
   try {
     res = await fetch(`${AI_API_BASE}${path}`, {
       method,
-      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      headers: { 'Content-Type': 'application/json', ...authHeaders(), ...hostVersionHeaders() },
       body: body === undefined ? undefined : JSON.stringify(body),
       keepalive: opts?.keepalive === true,
     });
@@ -102,7 +120,7 @@ export async function streamAI(
   try {
     res = await fetch(`${AI_API_BASE}${path}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      headers: { 'Content-Type': 'application/json', ...authHeaders(), ...hostVersionHeaders() },
       body: JSON.stringify(body),
     });
   } catch {

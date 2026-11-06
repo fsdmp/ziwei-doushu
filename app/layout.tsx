@@ -55,6 +55,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             （后端 fail-closed）。这里取走存 sessionStorage 并从地址栏精确移除 t 参数
             （不进分享链接/日志，其余 hash 内容保留），与 lib/ai 的兜底捕获同键同语义 */}
         <script dangerouslySetInnerHTML={{ __html: `(function(){try{var h=location.hash;if(!h)return;var p=new URLSearchParams(h.charAt(0)==='#'?h.slice(1):h);var t=p.get('t');if(!t)return;sessionStorage.setItem('ziwei_ai_token',t);p.delete('t');var r=p.toString();history.replaceState(null,'',location.pathname+location.search+(r?'#'+r:''));}catch(e){}})();` }} />
+        {/* 宿主小程序版本首帧先存：服务端把它拼在 /ziwei/web 下发的 URL query 上
+            （mp_env/mp_ver，见 mistsee handler withHostVersion），这里读一次进
+            sessionStorage——站内 router.push 翻页会丢 query，等 lib/ai 首次请求才取
+            就晚了。之后所有对服务端的请求回发 X-App-Env/X-App-Version（lib/ai
+            hostVersionHeaders），访问日志/灰度对 H5 流量与小程序流量同口径。参数
+            非敏感不从地址栏清除；无参（旧版小程序/直开浏览器）不存，回发侧同缺席 */}
+        <script dangerouslySetInnerHTML={{ __html: `(function(){try{var q=new URLSearchParams(location.search);var e=q.get('mp_env'),v=q.get('mp_ver');if(e)sessionStorage.setItem('ziwei_mp_env',e);if(v)sessionStorage.setItem('ziwei_mp_ver',v);}catch(e){}})();` }} />
         {/* 门禁：仅小程序 web-view 可用（UA 含 miniProgram），其余环境在首帧渲染前
             跳转引导页扫码进小程序；location.replace 不留历史，返回键不困在站内。
             localhost 放行便于本地开发调试；内测参数 ?beta=1 放行并记入 sessionStorage，
