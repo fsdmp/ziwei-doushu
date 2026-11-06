@@ -1,7 +1,10 @@
 // unlock.ts 紫微 H5 解锁体系（docs/09 §4/§5/§6）——一切按「一次起盘」计：
 // 盘 id = 起盘时生成的会话 uuid（ZiweiChart.sessionId，2026-11-05 拍板）。
-// · qna_extra（v2 问答限额）：每盘免费 5 问，一次分享该盘不限次
+// · qna_extra（v2 问答限额）：每盘免费 3 问，一次分享该盘不限次
 // · liunian_all（v2.5 流年解锁）：一次分享该盘全部年份
+// · qna_heming（合盘邀请追问，2026-11-06）：/invite 结果页深读后的追问同款
+//   N=3 限额，key=合盘会话 id（甲盘 sessionId）——与 solo 各限各的互不影响，
+//   一边撞墙/解锁不动另一边的额度（kind 分桶即隔离，台账也按 kind 各落各行）
 // 两把锁判定都在本地（盘 id 是会话级身份，重起盘即新 id 重新上锁——减压阀
 // 最大化）；server user_unlocks 是统一台账（uid+kind+盘 id，幂等落账）：解锁
 // 事件统计 + 将来付费（pay 钥匙）插同一张表。落账 best-effort，失败不拦解锁。
@@ -129,8 +132,10 @@ export async function confirmPendingAdUnlock(kind: UnlockKind): Promise<boolean>
   try { sessionStorage.removeItem(AD_PENDING); } catch { /* 忽略 */ }
   if (!p.ref || !p.kind || !p.key) return false;
   const unlock = () => {
-    if (p.kind === 'qna_extra') markQnaUnlocked(p.key);
-    else markLiunianUnlocked(p.key);
+    // 两把问答锁（solo qna_extra / 合盘邀请 qna_heming）共用 qna 本地 key 形态
+    //——key 各是各的会话 id，分桶即隔离；流年锁单独形态
+    if (p.kind === 'liunian_all') markLiunianUnlocked(p.key);
+    else markQnaUnlocked(p.key);
     unlockBy(p.kind, p.key, 'ad');
   };
   // 稍等记账到达（bridge navigateBack 与本回调几乎同刻，网络慢一拍）
@@ -195,7 +200,7 @@ export function markLiunianUnlocked(key: string): void {
 
 // ─── server 统一台账（docs/09 §6 + docs/11 §5：uid+kind+盘 id，幂等）────
 
-export type UnlockKind = 'qna_extra' | 'liunian_all';
+export type UnlockKind = 'qna_extra' | 'qna_heming' | 'liunian_all';
 export type UnlockSource = 'share' | 'ad' | 'member';
 
 /** member 台账防重（模块级，页面会话内有效）：member 短路不能写本地解锁 key

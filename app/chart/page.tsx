@@ -12,6 +12,7 @@ import { newSessionId } from '@/lib/unlock';
 import { reportEventOnce } from '@/lib/events';
 import { touchSession } from '@/lib/unlock';
 import { loadLastSession, type LastSession } from '@/lib/ziwei/history';
+import { formFromBirthInfo } from '@/lib/ziwei/share';
 import { generateChart } from '@/lib/ziwei/algorithm';
 import type { BirthInfo, ZiweiChart, Palace } from '@/lib/ziwei/types';
 
@@ -37,28 +38,6 @@ function mingStarsHighlight(chart: ZiweiChart): string | undefined {
 
 /** 转发卡默认标题：ShareButton 的兜底文案与起盘时静默 push 用同一份，避免两处漂移 */
 const SHARE_TITLE = '紫微斗数 · 起一张你的命盘';
-
-/** 档案续问恢复：盘 JSON 的 BirthInfo（时辰索引 + 原始输入）换回表单态——
- *  合盘邀请/分享卡的生辰原料。origInput 优先（子时换日换算前的用户原话）；
- *  缺它 = 时辰不详起盘，unknownTime 置位（邀请按钮对 unknownTime 同样放行）。 */
-function formFromBirthInfo(b: BirthInfo): BirthFormState {
-  const o = b.origInput;
-  return {
-    name: b.name ?? '',
-    calendar: 'solar',
-    year: String(o?.year ?? b.year),
-    month: String(o?.month ?? b.month),
-    day: String(o?.day ?? b.day),
-    lunarLeap: false,
-    clockHour: o ? String(o.clockHour) : '',
-    clockMinute: o ? String(o.clockMinute) : '',
-    unknownTime: !o,
-    province: b.province ?? '',
-    city: b.city ?? '',
-    longitude: b.longitude ?? 120,
-    gender: b.gender,
-  };
-}
 
 /** 起盘后主动提示「和 TA 合一张盘」的关闭记忆（sessionStorage，会话级）：
  *  2026-11-06 口径调整——原 24h 频控（localStorage 时间戳）让横幅「有时显示有时

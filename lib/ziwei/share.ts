@@ -57,6 +57,29 @@ export function formToBirthInfo(form: BirthFormState): BirthInfo | null {
   };
 }
 
+/** BirthInfo → BirthFormState（formToBirthInfo 的反向换算）：盘 JSON 的生辰
+ *  换回表单态——档案续问恢复（chart/heming 页）后合盘邀请/分享卡的生辰原料。
+ *  origInput 优先（子时换日换算前的用户原话）；缺它 = 时辰不详起盘，
+ *  unknownTime 置位（邀请按钮对 unknownTime 同样放行）。 */
+export function formFromBirthInfo(b: BirthInfo): BirthFormState {
+  const o = b.origInput;
+  return {
+    name: b.name ?? '',
+    calendar: 'solar',
+    year: String(o?.year ?? b.year),
+    month: String(o?.month ?? b.month),
+    day: String(o?.day ?? b.day),
+    lunarLeap: false,
+    clockHour: o ? String(o.clockHour) : '',
+    clockMinute: o ? String(o.clockMinute) : '',
+    unknownTime: !o,
+    province: b.province ?? '',
+    city: b.city ?? '',
+    longitude: b.longitude ?? 120,
+    gender: b.gender,
+  };
+}
+
 /** BirthFormState → URLSearchParams（用于分享链接） */
 export function formToSearchParams(form: BirthFormState): URLSearchParams {
   const p = new URLSearchParams();

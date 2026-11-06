@@ -125,16 +125,25 @@ export default function ArchivePage() {
     } catch { /* 静默 */ }
   }, [detail]);
 
-  // 用此盘继续问（docs/10 §5.1）：盘 JSON 暂存 sessionStorage，跳 chart 页恢复
+  // 用此盘继续问（docs/10 §5.1）：盘 JSON 暂存 sessionStorage，跳对应页恢复
   // ——sessionId 原样带回，落库钩子按 session_id 归并同盘。touchSession 把该盘
   // 抬回「最近 10 盘」白名单，否则下次启动 cleanupOldSessions 会清掉它的
-  // 问答计数/流年解锁键（早于窗口的老档案盘恢复即被重锁）
+  // 问答计数/流年解锁键（早于窗口的老档案盘恢复即被重锁）。
+  // 合盘必须回 /heming 恢复双盘（2026-11-06）：走 /chart 会以 solo 口追问，
+  // 服务端 upsert 同 session 行把 kind 覆盖成 solo、乙盘数据被清空（降级）。
+  // 缺 chart_b 的老 heming 行兜底走 /chart（无乙盘可恢复，与 solo 同路）
   const continueAsk = useCallback((d: ArchiveDetail) => {
+    const toHeming = d.kind === 'heming' && d.chart_b;
     try {
-      sessionStorage.setItem('ziwei_archive_restore', JSON.stringify(d.chart_a));
+      if (toHeming) {
+        sessionStorage.setItem('ziwei_archive_restore_heming',
+          JSON.stringify({ chartA: d.chart_a, chartB: d.chart_b }));
+      } else {
+        sessionStorage.setItem('ziwei_archive_restore', JSON.stringify(d.chart_a));
+      }
       touchSession(d.session_id);
-      router.push('/chart');
-    } catch { /* 存不进直接跳，起盘态由用户自起 */ router.push('/chart'); }
+      router.push(toHeming ? '/heming' : '/chart');
+    } catch { /* 存不进直接跳，起盘态由用户自起 */ router.push(toHeming ? '/heming' : '/chart'); }
   }, []);
 
   const cardStyle = {
@@ -264,12 +273,24 @@ export default function ArchivePage() {
               className="mt-3 w-full py-2 rounded-lg"
               style={{ fontSize: 12, fontWeight: 600, cursor: 'pointer', background: 'var(--vip-grad)', color: 'white', border: 'none' }}
             >
-              ✦ 用这张盘继续问
+              {detail.kind === 'heming' && detail.chart_b ? '✦ 回到这张合盘继续问' : '✦ 用这张盘继续问'}
             </button>
           </div>
+          {/* 合盘双盘都渲染（2026-11-06）：乙盘一直存着但此前看不见 */}
+          {detail.kind === 'heming' && (
+            <div style={{ fontSize: 11, color: 'var(--t-faint, #999)', letterSpacing: '0.2em', marginBottom: 6 }}>甲方之盘</div>
+          )}
           <div style={{ ...cardStyle, padding: '10px 12px', marginBottom: 12, overflowX: 'auto' }}>
             <ChartBoard chart={detail.chart_a} />
           </div>
+          {detail.kind === 'heming' && detail.chart_b && (
+            <>
+              <div style={{ fontSize: 11, color: 'var(--t-faint, #999)', letterSpacing: '0.2em', marginBottom: 6 }}>乙方之盘</div>
+              <div style={{ ...cardStyle, padding: '10px 12px', marginBottom: 12, overflowX: 'auto' }}>
+                <ChartBoard chart={detail.chart_b} />
+              </div>
+            </>
+          )}
           {detail.msgs.map((m, i) => (
             <div key={i} style={{ ...cardStyle, padding: '14px 16px', marginBottom: 10 }}>
               <div style={{ fontSize: 12, color: 'var(--t-faint, #999)', marginBottom: 6 }}>

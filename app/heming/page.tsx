@@ -7,7 +7,7 @@ import HemingInviteButton from '@/components/HemingInviteButton';
 import MyHemingInviteButton from '@/components/MyHemingInviteButton';
 import AiContent from '@/components/AiContent';
 import { streamAI, type AIError } from '@/lib/ai';
-import { formToBirthInfo } from '@/lib/ziwei/share';
+import { formToBirthInfo, formFromBirthInfo } from '@/lib/ziwei/share';
 import { generateChart as buildChart } from '@/lib/ziwei/algorithm';
 import { newSessionId } from '@/lib/unlock';
 import { reportEventOnce } from '@/lib/events';
@@ -32,6 +32,25 @@ export default function HemingPage() {
   //（web-view 有 hydrate 黑屏前科，docs/09 §8，不新增 mismatch 源）
   const [lastHeming, setLastHeming] = useState<LastSession | null>(null);
   useEffect(() => { setLastHeming(loadLastSession('heming')); }, []);
+
+  // 档案「回到这张合盘继续问」恢复通道（docs/10 §5.1，2026-11-06 合盘同权）：
+  // archive 页存双盘 JSON 跳来，一次性消费（读后即清）。sessionId 原样保留——
+  // 续问落库按 session_id 归并同一行盘（合盘口，不再有 solo 降级覆盖乙盘）；
+  // 生辰一并换回表单态（chart 页恢复同款）：重新合盘改生辰、邀请/分享原料都在
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem('ziwei_archive_restore_heming');
+      if (!raw) return;
+      sessionStorage.removeItem('ziwei_archive_restore_heming');
+      const r = JSON.parse(raw) as { chartA: ZiweiChart; chartB: ZiweiChart };
+      if (r.chartA?.palaces && r.chartB?.palaces) {
+        setChartA(r.chartA);
+        setChartB(r.chartB);
+        if (r.chartA.birthInfo) setFormA(formFromBirthInfo(r.chartA.birthInfo));
+        if (r.chartB.birthInfo) setFormB(formFromBirthInfo(r.chartB.birthInfo));
+      }
+    } catch { /* 恢复失败走表单 */ }
+  }, []);
 
   // ─── AI 合盘分析状态 ─────────────────────────────────────
   const [analysis, setAnalysis] = useState('');
