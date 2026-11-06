@@ -146,37 +146,56 @@ export default function ArchivePage() {
   // ——sessionId 原样带回，落库钩子按 session_id 归并同盘。touchSession 把该盘
   // 抬回「最近 10 盘」白名单，否则下次启动 cleanupOldSessions 会清掉它的
   // 问答计数/流年解锁键（早于窗口的老档案盘恢复即被重锁）。
+  // 问答原文一并带回（2026-11-06 真机反馈：只带盘跳过去历史问答没了）：solo
+  // 转成 InsightPanel 会话初值（云端流水无 hidden 概念，平铺 user/assistant）；
+  // heming 页是「单次全量分析」模型，取云端最后一轮 answer 当 analysis——与
+  // 本地「回到上次」同语义（那里存的就是最近一次 runAnalysis 的全文）。
   // 合盘必须回 /heming 恢复双盘（2026-11-06）：走 /chart 会以 solo 口追问，
   // 服务端 upsert 同 session 行把 kind 覆盖成 solo、乙盘数据被清空（降级）。
   // 缺 chart_b 的老 heming 行兜底走 /chart（无乙盘可恢复，与 solo 同路）
   const continueAsk = useCallback((d: ArchiveDetail) => {
     const toHeming = d.kind === 'heming' && d.chart_b;
+    const lastAnswer = d.msgs.length ? d.msgs[d.msgs.length - 1].answer : '';
     try {
       if (toHeming) {
         sessionStorage.setItem('ziwei_archive_restore_heming',
-          JSON.stringify({ chartA: d.chart_a, chartB: d.chart_b }));
+          JSON.stringify({ chartA: d.chart_a, chartB: d.chart_b, analysis: lastAnswer }));
       } else {
-        sessionStorage.setItem('ziwei_archive_restore', JSON.stringify(d.chart_a));
+        sessionStorage.setItem('ziwei_archive_restore', JSON.stringify({
+          chart: d.chart_a,
+          messages: d.msgs.flatMap(m => [
+            { role: 'user' as const, content: m.question || '（默认综合解读）' },
+            { role: 'assistant' as const, content: m.answer },
+          ]),
+        }));
       }
       touchSession(d.session_id);
       router.push(toHeming ? '/heming' : '/chart');
     } catch { /* 存不进直接跳，起盘态由用户自起 */ router.push(toHeming ? '/heming' : '/chart'); }
   }, []);
 
-  // 非会员「回看上一次」（docs/10 §5.4）：本地最近一条直达恢复——直接复用
-  // 档案续问的 sessionStorage 通道与消费链路（载荷形状不变：只带盘，跳过去
-  // 问答新开一轮，与会员「用此盘继续问」同款）；touchSession 抬白名单与
-  // continueAsk 同因（老盘不抬会被启动 cleanup 重锁问答计数/流年键）。老数据
-  // 无 sessionId 时跳过 touch 照常恢复。零云端请求（非会员零落库不破）
+  // 非会员「回看上一次」（docs/10 §5.4）：本地最近一条直达恢复——复用档案
+  // 续问的 sessionStorage 通道，但载荷多带问答/解读原文（消费端向后兼容：
+  // 会员续问不带、仍是新轮问答），恢复成与页内「回到上次」同款完整会话——
+  // 同名入口行为必须一致（2026-11-06 真机反馈：只带盘跳过去历史问答没了）。
+  // touchSession 抬白名单与 continueAsk 同因（老盘不抬会被启动 cleanup 重锁
+  // 问答计数/流年键），老数据无 sessionId 时跳过 touch 照常恢复。零云端请求
+  //（非会员零落库不破）
   const viewLast = useCallback(() => {
     if (!lastPick?.data.chart) return;
     const toHeming = lastPick.kind === 'heming' && !!lastPick.data.chartB;
     try {
       if (toHeming) {
-        sessionStorage.setItem('ziwei_archive_restore_heming',
-          JSON.stringify({ chartA: lastPick.data.chart, chartB: lastPick.data.chartB }));
+        sessionStorage.setItem('ziwei_archive_restore_heming', JSON.stringify({
+          chartA: lastPick.data.chart,
+          chartB: lastPick.data.chartB,
+          analysis: lastPick.data.analysis ?? '',
+        }));
       } else {
-        sessionStorage.setItem('ziwei_archive_restore', JSON.stringify(lastPick.data.chart));
+        sessionStorage.setItem('ziwei_archive_restore', JSON.stringify({
+          chart: lastPick.data.chart,
+          messages: lastPick.data.messages ?? [],
+        }));
       }
       const sid = (lastPick.data.chart as ZiweiChart).sessionId;
       if (sid) touchSession(sid);
@@ -227,7 +246,7 @@ export default function ArchivePage() {
           {lastPick ? (
             <>
               <div style={{ fontSize: 13, lineHeight: 1.9, color: 'var(--t-text, #ccc)' }}>
-                上一次起的盘还留在本机——<br />最近一次，随时回看、继续问。
+                上一次的盘与解读还在本机——<br />最近一次，随时回看、继续问。
               </div>
               <button
                 onClick={viewLast}

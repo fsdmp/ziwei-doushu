@@ -63,18 +63,24 @@ export default function ChartPage() {
   useEffect(() => { setLastSolo(loadLastSession('solo')); }, []);
 
   // 档案「用此盘继续问」恢复通道（docs/10 §5.1）：archive 页存盘 JSON 跳来，
-  // 一次性消费（读后即清）；sessionId 原样保留——追问落库按 session_id 归并同盘
+  // 一次性消费（读后即清）；sessionId 原样保留——追问落库按 session_id 归并同盘。
+  // 两种载荷：会员续问只带盘（问答新轮）；非会员「回看上一次」（2026-11-06）
+  // 对象形状带问答原文——恢复成与「回到上次」同款完整会话（同名入口行为一致）
   useEffect(() => {
     try {
       const raw = sessionStorage.getItem('ziwei_archive_restore');
       if (raw) {
         sessionStorage.removeItem('ziwei_archive_restore');
-        const restored = JSON.parse(raw) as ZiweiChart;
+        const parsed = JSON.parse(raw) as
+          | ZiweiChart
+          | { chart: ZiweiChart; messages?: { role: 'user' | 'assistant'; content: string; hidden?: boolean }[] };
+        const restored = 'palaces' in parsed ? parsed : parsed.chart;
         if (restored && restored.palaces) {
           setChart(restored);
           // 生辰一并换回表单态：合盘邀请/分享卡入口（HemingInviteButton/ShareButton）
           // 都以 savedForm 为原料，不恢复则档案续问回来这两个按钮静默消失
           if (restored.birthInfo) setSavedForm(formFromBirthInfo(restored.birthInfo));
+          if (!('palaces' in parsed)) setRestoredMsgs(parsed.messages ?? []);
         }
       }
     } catch { /* 恢复失败走表单 */ }
