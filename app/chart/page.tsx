@@ -184,7 +184,7 @@ export default function ChartPage() {
               生辰在手，发起即存 payload */}
           <HemingInviteButton form={savedForm} label="☯ 合盘" />
           {/* A 侧回访常驻入口：签发过合盘码才渲染，未回应=等待态/已回应=完整合盘 */}
-          <MyHemingInviteButton />
+          <MyHemingInviteButton label="☯ 我的邀请" />
           {/* 云端档案入口（docs/10 §5.2）：非会员也可见，点进引导开会员——
               这个功能自带的转化曝光位；会员紫与工具栏灰按钮拉开层级 */}
           <button
@@ -243,8 +243,15 @@ export default function ChartPage() {
           grid-column: 1 / -1; /* 独占一行，避免把命盘挤进右侧窄列 */
           display: flex;
           align-items: center;
+          flex-wrap: wrap; /* 390px 放不下全部按钮：满行自然换两行，
+            每个按钮保持原尺寸——比压缩到文字折行体面（2026-11-06 真机反馈） */
           gap: 8px;
+          row-gap: 6px;
           margin-bottom: 4px;
+        }
+        .chart-toolbar > * {
+          flex-shrink: 0;   /* 不许被压缩：折行是大方让位，挤压变形不是 */
+          white-space: nowrap;
         }
         @media (min-width: 1024px) {
           .chart-page-grid {
