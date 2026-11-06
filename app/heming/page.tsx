@@ -143,20 +143,24 @@ export default function HemingPage() {
         background: isDark ? 'rgba(2,8,16,0.88)' : 'rgba(250,245,235,0.92)',
         backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)',
         borderBottom: '1px solid var(--bdr)',
-        display: 'flex', alignItems: 'center', padding: '0 24px', height: '52px', gap: '16px',
+        display: 'flex', alignItems: 'center', padding: '0 14px', height: '52px', gap: '10px',
       }}>
         <button
           onClick={() => router.push('/')}
           style={{
             display: 'flex', alignItems: 'center', gap: '4px', fontSize: '13px',
             color: 'var(--tx-3)', background: 'none', border: 'none', cursor: 'pointer',
+            flexShrink: 0, whiteSpace: 'nowrap', padding: 0,
           }}
         >
           <span style={{ fontSize: '16px' }}>‹</span>
           <span>返回</span>
         </button>
         <div style={{ width: '1px', height: '20px', background: 'var(--bdr-med)' }} />
-        <span style={{ fontSize: '12px', color: 'var(--ac)', letterSpacing: '0.2em' }}>合盘分析</span>
+        <span style={{
+          fontSize: '12px', color: 'var(--ac)', letterSpacing: '0.2em',
+          flexShrink: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        }}>合盘分析</span>
         <div style={{ flex: 1 }} />
         {lastHeming && (
           <button
@@ -169,7 +173,8 @@ export default function HemingPage() {
               if (lastHeming.analysis) setAnalysis(lastHeming.analysis);
             }}
             style={{ fontSize: '12px', color: 'var(--tx-3)', background: 'none',
-              border: '1px solid var(--bdr-med)', borderRadius: '8px', padding: '4px 10px', cursor: 'pointer' }}
+              border: '1px solid var(--bdr-med)', borderRadius: '8px', padding: '4px 10px',
+              cursor: 'pointer', flexShrink: 0, whiteSpace: 'nowrap' }}
           >
             回到上次
           </button>
@@ -178,11 +183,15 @@ export default function HemingPage() {
         <button
           onClick={() => router.push('/archive')}
           style={{ fontSize: '12px', color: 'var(--vip)', background: 'var(--vip-bg)',
-            border: '1px solid var(--vip-bdr)', borderRadius: '8px', padding: '4px 10px', cursor: 'pointer' }}
+            border: '1px solid var(--vip-bdr)', borderRadius: '8px', padding: '4px 10px',
+            cursor: 'pointer', flexShrink: 0, whiteSpace: 'nowrap' }}
         >
           ✦ 云端档案
         </button>
-        <span style={{ fontSize: '11px', color: 'var(--tx-3)' }}>感情 · 合伙 · 亲子 · 朋友</span>
+        <span style={{
+          fontSize: '11px', color: 'var(--tx-3)',
+          flexShrink: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        }}>感情 · 合伙 · 亲子 · 朋友</span>
       </header>
 
       {/* 主体 */}
@@ -212,11 +221,15 @@ export default function HemingPage() {
             />
             {/* 裂变入口（docs/09 §3.1）：甲方填好后可把邀请发给 TA，由 TA 亲自填乙方——
                 「想知道和 TA 的关系」是裂变引擎第一排序，比物质奖励强 */}
-            <div style={{ marginTop: '16px', textAlign: 'center' }}>
+            <div style={{
+              marginTop: '16px', textAlign: 'center',
+              display: 'flex', flexDirection: 'column', alignItems: 'stretch', gap: '8px',
+            }}>
+              {/* 竖排：手机上两个长按钮同行放不下（「和 TA 合一张盘」被迫换行
+                  挤压、说明文字被顶掉）——各占整行，视觉也更有层次 */}
               <HemingInviteButton form={formA} />
-              {' '}
               <MyHemingInviteButton />
-              <p style={{ fontSize: '10px', color: 'var(--tx-3)', marginTop: '8px', lineHeight: 1.6 }}>
+              <p style={{ fontSize: '10px', color: 'var(--tx-3)', lineHeight: 1.6 }}>
                 转发给 TA，对方填好生辰就能看到你们的合盘
               </p>
             </div>
@@ -247,6 +260,22 @@ export default function HemingPage() {
             <span style={{ color: 'var(--ac)', opacity: 0.6 }}>◉</span>
             <span style={{ fontSize: '11px', letterSpacing: '0.3em', color: 'var(--tx-3)' }}>合盘分析 · HEMING</span>
           </div>
+
+          {/* 回到上次/已出结果态的「重新合盘」：恢复后想重跑（改生辰重排）没有
+              入口——原「开始合盘分析」按钮在 !analysis 分支里，出了结果就消失 */}
+          {(analysis || analyzing) && (
+            <button
+              onClick={() => { setAnalysis(''); setChartA(null); setChartB(null); setAnalyzing(false); setFormError(null); }}
+              style={{
+                alignSelf: 'flex-start', marginBottom: '16px',
+                fontSize: '12px', padding: '6px 14px',
+                border: '1px solid var(--bdr-med)', borderRadius: 'var(--r-pill)',
+                background: 'transparent', color: 'var(--tx-3)', cursor: 'pointer',
+              }}
+            >
+              ‹ 重新合盘（修改双方生辰）
+            </button>
+          )}
 
           {/* 状态分支 */}
           {!analysis && !analyzing && (
