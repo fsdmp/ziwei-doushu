@@ -183,7 +183,7 @@ export default function ArchivePage() {
             className="w-full py-2.5 rounded-xl"
             style={{
               fontSize: 13, fontWeight: 600, letterSpacing: '0.08em', cursor: 'pointer',
-              background: 'linear-gradient(135deg, #7a5cbe, #5b3fa0)', color: 'white',
+              background: 'var(--vip-grad)', color: 'white',
             }}
           >
             开通会员 · 解锁云端档案
@@ -262,7 +262,7 @@ export default function ArchivePage() {
             <button
               onClick={() => continueAsk(detail)}
               className="mt-3 w-full py-2 rounded-lg"
-              style={{ fontSize: 12, fontWeight: 600, cursor: 'pointer', background: 'linear-gradient(135deg, #7a5cbe, #5b3fa0)', color: 'white', border: 'none' }}
+              style={{ fontSize: 12, fontWeight: 600, cursor: 'pointer', background: 'var(--vip-grad)', color: 'white', border: 'none' }}
             >
               ✦ 用这张盘继续问
             </button>

@@ -79,8 +79,8 @@ function loadBridge(): Promise<WxMiniProgram> {
   return sdkPromise;
 }
 
-/** 轻量 toast（桥层专用）：H5 无全局 toast 基建，直接挂一个会自己消失的 DOM 节点 */
-function toast(msg: string): void {
+/** 轻量 toast：H5 无全局 toast 基建，直接挂一个会自己消失的 DOM 节点 */
+export function miniToast(msg: string): void {
   if (typeof document === 'undefined') return;
   const el = document.createElement('div');
   el.textContent = msg;
@@ -104,14 +104,37 @@ function miniNavigateTo(path: string): void {
   loadBridge()
     .then(mp => mp.navigateTo({
       url: path,
-      fail: () => toast('调不起小程序能力，请稍后再试'),
+      fail: () => miniToast('调不起小程序能力，请稍后再试'),
     }))
-    .catch(() => toast('调不起小程序能力，请稍后再试'));
+    .catch(() => miniToast('调不起小程序能力，请稍后再试'));
 }
 
-/** 吊起激励视频广告（小程序侧：ziwei-bridge → 播放 → 服务端核销） */
-export function openRewardedAd(): void {
-  miniNavigateTo('/pages/ziwei-bridge/index?cmd=ad');
+/** 吊起激励视频广告（小程序侧：ziwei-bridge → 播放 → 服务端核销）。ref 由
+ * H5 生成透传：看完记账用同一 ref——H5 回前台凭它回查 /ziwei/ad/summary?ref=
+ * 确认「真看完」才解锁（无填充/中途关闭不记账即不解锁）。 */
+export function openRewardedAd(ref?: string): void {
+  const q = ref ? `&ref=${encodeURIComponent(ref)}` : '';
+  miniNavigateTo(`/pages/ziwei-bridge/index?cmd=ad${q}`);
+}
+
+/** 吊起转发面板中转页（小程序侧：ziwei-bridge cmd=share → open-type=share 原生
+ * 按钮一点即弹真面板——web-view 里编程弹不出的那层）。素材走 URL 参数
+ * （postMessage 不适用于 navigateTo 时机）；title 做卡片标题，invite/ch 进
+ * 落地 query。分享与否不阻塞解锁（点入口即解锁的合规口径不变）。 */
+export function openSharePanel(payload: {
+  title: string; invite?: string; ch?: string;
+  /** 引导式分享解锁（docs/10 §4）：带上锁品类与盘 id——bridge 里点「发送给
+   *  朋友」时上报落账，H5 pageshow 回查命中才真正解锁；不点转发直接返回则不解锁 */
+  lock?: { kind: string; chartKey: string };
+}): void {
+  const q = new URLSearchParams({ cmd: 'share', title: payload.title });
+  if (payload.invite) q.set('invite', payload.invite);
+  if (payload.ch) q.set('ch', payload.ch);
+  if (payload.lock) {
+    q.set('lock_kind', payload.lock.kind);
+    q.set('lock_key', payload.lock.chartKey);
+  }
+  miniNavigateTo(`/pages/ziwei-bridge/index?${q.toString()}`);
 }
 
 /**

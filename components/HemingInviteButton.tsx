@@ -10,7 +10,7 @@
 
 import { useState } from 'react';
 import type { BirthFormState } from '@/components/BirthForm';
-import { createHemingInvite } from '@/lib/invite';
+import { createHemingInvite, saveMyHemingInvite } from '@/lib/invite';
 import { pushShareCard } from '@/lib/mini-bridge';
 import { SITE_URL } from '@/lib/site';
 import ShareModal from './ShareModal';
@@ -43,6 +43,10 @@ export default function HemingInviteButton({ form, label = '☯ 和 TA 合一张
     try {
       const issued = await createHemingInvite(form);
       const title = `${issued.inviter_name} 想和你合一张盘`;
+      // 记本机码（「我的合盘邀请」入口用）+ 广播：InviteReturnBanner 立即开始
+      // 盯回应（不用等下次进站）、入口即刻渲染（不用等重新 mount）
+      saveMyHemingInvite(issued.token);
+      window.dispatchEvent(new CustomEvent('ziwei:invite-issued'));
       // 先备转发卡素材（postMessage 在转发动作发生时必已送达容器页）
       pushShareCard({ title, invite: issued.token, ch: 'heming' });
       setModal({ title, invite: issued.token });

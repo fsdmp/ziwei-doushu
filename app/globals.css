@@ -28,6 +28,17 @@
   --ac-bg:  rgba(184,146,42,0.07);
   --ac-bdr: rgba(184,146,42,0.22);
 
+  /* 会员/解锁识别色：黛紫（云端档案入口、会员 CTA、解锁墙专用——
+     2026-11-06 调优：旧网络紫 #7a5cbe→#5b3fa0 降饱和偏蓝，米白底对比 ~6:1）
+     --vip-grad 是白字实底，两主题都须白字 ≥5:1；--vip-ink 专给固定白底表面
+     （ShareModal 白卡、横幅白按钮）上的紫字，不随主题变，暗色不覆盖 */
+  --vip:      #66549e;
+  --vip-ink:  #4e3f82;
+  --vip-bg:   rgba(102,84,158,0.08);
+  --vip-bdr:  rgba(102,84,158,0.32);
+  --vip-grad: linear-gradient(135deg,#66549e,#4e3f82);
+  --vip-glow: rgba(78,63,130,0.28);
+
   /* 四化语义色（仅用于命盘数据，不用于UI装饰） */
   --lu:   #2D7A4A;
   --quan: #1A56A8;
@@ -88,6 +99,13 @@
   --ac-dim: #e8c060;
   --ac-bg:  rgba(212,168,67,0.10);
   --ac-bdr: rgba(212,168,67,0.25);
+
+  /* 会员/解锁识别色（暗）：雾紫，深蓝黑底上提亮去燥；实底渐变仍须压得住白字 */
+  --vip:      #a394d6;
+  --vip-bg:   rgba(163,148,214,0.12);
+  --vip-bdr:  rgba(163,148,214,0.30);
+  --vip-grad: linear-gradient(135deg,#7363ad,#56478c);
+  --vip-glow: rgba(115,99,173,0.30);
 
   --bdr:      rgba(255,255,255,0.07);
   --bdr-med:  rgba(255,255,255,0.12);
@@ -250,6 +268,24 @@ body {
   text-decoration: none;
 }
 .btn-ghost:hover { background: var(--bg-2); }
+
+/* 起盘页工具按钮（表单态 + 已起盘态共用，故放全局——表单态提前 return，
+   页内 <style> 块渲染不到）。chart-archive-btn = 云端档案入口的会员紫变体 */
+.chart-reset-btn,
+.chart-archive-btn {
+  padding: 6px 14px;
+  cursor: pointer;
+  border: 1px solid var(--bdr-med);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--tx-2);
+  font-size: 13px;
+}
+.chart-archive-btn {
+  border-color: var(--vip-bdr);
+  background: var(--vip-bg);
+  color: var(--vip);
+}
 
 /* Tab 容器 */
 .tab-container {

@@ -55,11 +55,15 @@ export default function ShareCardCanvas({ chart, birth, highlight }: ShareCardPr
     return { ...slot, palace, majors, isMing, isShen };
   });
 
-  // 卡片尺寸：680x420（适合微信缩略 + 朋友圈）
+  // 卡片尺寸：680x420（适合微信缩略 + 朋友圈）。flexShrink:0 是硬约束：根节点
+  // 带 overflow:hidden 时作为 flex 子项的 min-width 会归零，会被压到容器宽
+  //（手机弹窗约 300px）——右栏被挤窄，52px 主星一字一行把大限/标语顶出卡外。
+  // 预览用截图缩放显示（ShareModal 离屏渲染原尺寸），本节点永远按设计尺寸排版
   return (
     <div id="share-card" style={{
       width: '680px',
       height: '420px',
+      flexShrink: 0,
       background: 'linear-gradient(135deg, #fef9eb 0%, #f7e8c4 60%, #efd8a0 100%)',
       padding: '20px 28px',
       fontFamily: '"PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Microsoft JhengHei", sans-serif',
@@ -93,7 +97,7 @@ export default function ShareCardCanvas({ chart, birth, highlight }: ShareCardPr
           }}>紫</div>
           <div>
             <div style={{ fontSize: '15px', color: '#3d2f10', fontWeight: 600, letterSpacing: '0.12em', lineHeight: 1.2 }}>紫微命盘</div>
-            <div style={{ fontSize: '9px', color: '#a89b7c', letterSpacing: '0.18em', marginTop: '2px' }}>倪海厦正宗 · ZI WEI</div>
+            <div style={{ fontSize: '9px', color: '#a89b7c', letterSpacing: '0.18em', marginTop: '2px' }}>雾见叙心 · 倪海厦正宗</div>
           </div>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
@@ -260,8 +264,8 @@ export default function ShareCardCanvas({ chart, birth, highlight }: ShareCardPr
               <div style={{ fontSize: '10px', color: '#8b6a14', fontWeight: 600, letterSpacing: '0.08em', lineHeight: 1.4, marginTop: '2px' }}>
                 倪海厦为师 · AI 答疑伴学
               </div>
-              <div style={{ fontSize: '8px', color: '#a89b7c', letterSpacing: '0.15em', marginTop: '4px' }}>
-                扫码起你的命盘 →
+              <div style={{ fontSize: '9px', color: '#8b6a14', letterSpacing: '0.1em', marginTop: '4px', fontWeight: 600 }}>
+                微信搜小程序「雾见叙心」· 起你的命盘 →
               </div>
             </div>
           </div>

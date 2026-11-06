@@ -1,15 +1,16 @@
 'use client';
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { ZiweiChart, Palace, Star } from '@/lib/ziwei/types';
 import { BRANCHES, STEMS } from '@/lib/ziwei/constants';
 import { Solar } from 'lunar-javascript';
 import {
   chartKey, liunianUnlocked, markLiunianUnlocked, unlockByShare,
-  isMember, unlockBy, refreshMember,
+  isMember, unlockBy, refreshMember, openAdUnlock, confirmPendingAdUnlock,
+  sharePanelEnabled, fetchUnlockStatus,
 } from '@/lib/unlock';
 import { reportEventOnce } from '@/lib/events';
-import { pushShareCard, openPaySheet, openRewardedAd } from '@/lib/mini-bridge';
+import { pushShareCard, openPaySheet, openSharePanel, miniToast } from '@/lib/mini-bridge';
 import PalaceCell from './PalaceCell';
 import TimeNav, { type TimeView, getYearStemIndex, buildSiHuaOverlay } from './TimeNav';
 
@@ -87,18 +88,44 @@ export default function ChartBoard({ chart, onStarSelect, onPalaceSelect, onSiHu
   }, [cKey, liunianLocked]);
   useEffect(() => {
     const onShow = () => {
+      // 续看（与问答「挂起续答」同理）：任一钥匙生效后收锁并直接跳到用户当初
+      // 想看的年份——不让人解锁完还得再点一次年份
+      const resumeLiunian = () => {
+        const y = unlockAskRef.current;
+        setLiunianLocked(false);
+        setUnlockAsk(null);
+        if (y !== null) setLiunianYear(y);
+      };
       refreshMember().then(() => {
-        if (isMember()) {
-          setLiunianLocked(false);
-          setUnlockAsk(null);
-        }
+        if (isMember()) resumeLiunian();
       });
+      // 广告钥匙回查：只认流年锁的 pending（问答的归 InsightPanel）
+      confirmPendingAdUnlock('liunian_all').then(ok => {
+        if (ok) resumeLiunian();
+      });
+      // 分享钥匙回查（引导式，share_panel=true）：bridge 里点了「发送给朋友」
+      // 台账才有行——命中即解锁并跳到想看的年份；没点直接返回则锁面保留
+      if (liunianLockedRef.current) {
+        fetchUnlockStatus('liunian_all', cKeyRef.current).then(ok => {
+          if (ok) {
+            markLiunianUnlocked(cKeyRef.current);
+            resumeLiunian();
+          }
+        });
+      }
     };
     window.addEventListener('pageshow', onShow);
     return () => window.removeEventListener('pageshow', onShow);
   }, []);
   // 想去但被锁的年份（解锁面板的钩子文案用「解锁 {year} 年的你」）
   const [unlockAsk, setUnlockAsk] = useState<number | null>(null);
+  // 想看年份/锁态/盘 id 的镜像 ref：pageshow 监听只挂一次，读 state 会锁死首帧值
+  const unlockAskRef = useRef<number | null>(null);
+  const liunianLockedRef = useRef(false);
+  const cKeyRef = useRef('');
+  useEffect(() => { unlockAskRef.current = unlockAsk; }, [unlockAsk]);
+  useEffect(() => { liunianLockedRef.current = liunianLocked; }, [liunianLocked]);
+  useEffect(() => { cKeyRef.current = cKey; }, [cKey]);
 
   const handleYearChange = (year: number) => {
     if (year !== new Date().getFullYear() && liunianLocked) {
@@ -114,7 +141,17 @@ export default function ChartBoard({ chart, onStarSelect, onPalaceSelect, onSiHu
   //（本盘全部年份），入口随之消失；server 台账 fire-and-forget。
   const shareUnlockLiunian = () => {
     if (unlockAsk === null) return;
-    pushShareCard({ title: `解锁 ${unlockAsk} 年的我 · 紫微流年`, ch: 'liunian' });
+    const title = `解锁 ${unlockAsk} 年的我 · 紫微流年`;
+    pushShareCard({ title, ch: 'liunian' });
+    if (sharePanelEnabled()) {
+      // 引导式分享解锁（docs/10 §4）：点按钮不解锁——跳 bridge，点了「发送
+      // 给朋友」才落账；回来 pageshow 回查命中才解锁并跳到想看的年份。没点
+      // 转发直接返回：锁面保留
+      openSharePanel({ title, ch: 'liunian', lock: { kind: 'liunian_all', chartKey: cKey } });
+      return;
+    }
+    // 旧版线上（bridge 未发版）：点即给（合规口径不变）
+    miniToast(`✦ 已解锁 · 立刻看 ${unlockAsk} 年`);
     unlockByShare('liunian_all', cKey);
     markLiunianUnlocked(cKey);
     setLiunianLocked(false);
@@ -188,8 +225,8 @@ export default function ChartBoard({ chart, onStarSelect, onPalaceSelect, onSiHu
             transition={{ duration: 0.18 }}
             className="mb-3 rounded-xl p-3.5"
             style={{
-              background: 'rgba(122,92,190,0.08)',
-              border: '1px solid rgba(122,92,190,0.28)',
+              background: 'var(--vip-bg)',
+              border: '1px solid var(--vip-bdr)',
             }}
           >
             <div className="text-[11px] mb-1" style={{ color: 'var(--t-gold)', letterSpacing: '0.15em' }}>
@@ -204,7 +241,7 @@ export default function ChartBoard({ chart, onStarSelect, onPalaceSelect, onSiHu
                 onClick={shareUnlockLiunian}
                 className="flex-1 py-2 rounded-lg text-[11px] font-semibold transition-all"
                 style={{
-                  background: 'linear-gradient(135deg, #7a5cbe, #5b3fa0)',
+                  background: 'var(--vip-grad)',
                   color: 'white', letterSpacing: '0.08em',
                   cursor: 'pointer',
                 }}
@@ -236,15 +273,10 @@ export default function ChartBoard({ chart, onStarSelect, onPalaceSelect, onSiHu
             <div className="mt-2" style={{ textAlign: 'center' }}>
               <button
                 onClick={() => {
-                  // 广告钥匙（docs/11 §4.1）：与分享同权限——该盘全部年份一次
-                  // 给足；点按钮即解锁（与分享同口径），台账 source=ad
+                  // 广告钥匙（docs/11 §4.1）：看完记账才解锁——跳 bridge 播放，
+                  // pageshow 回查确认（confirmPendingAdUnlock）后收锁
                   if (unlockAsk === null) return;
-                  markLiunianUnlocked(cKey);
-                  unlockBy('liunian_all', cKey, 'ad');
-                  setLiunianLocked(false);
-                  setLiunianYear(unlockAsk);
-                  setUnlockAsk(null);
-                  openRewardedAd();
+                  openAdUnlock('liunian_all', cKey);
                 }}
                 className="text-[11px] underline underline-offset-2"
                 style={{ color: 'var(--t-faint)', background: 'transparent',

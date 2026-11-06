@@ -1,18 +1,26 @@
 'use client';
 
 // InviteReturnBanner.tsx 合盘邀请的 A 侧回访闭环（docs/09 §3.1 A 侧回访）：
-// 进站/落地拉一次 GET /ziwei/invites/mine（无 JWT 静默跳过——浏览器直开没有回访语义），
+// 拉 GET /ziwei/invites/mine（无 JWT 静默跳过——浏览器直开没有回访语义），
 // 有「已回应且未看过」的邀请 → 顶部轻提示条「TA 回应了你们的合盘」→ 点击进结果页
 // （/invite?invite=…&a=1，A 视角拉双方生辰本地跑完整合盘）。
 //
+// 不只等下次进站——三个时机自动盯，B 回应后 A 停在页面里也能弹：
+// ① 发起即刻（HemingInviteButton 签发成功广播 ziwei:invite-issued）；
+// ② 回前台（visibilitychange：A 切去微信转发/催 TA，切回来立即拉）；
+// ③ 前台轮询 30s（仅当还有在挂未回应的码；无码/码已回应即停——浏览器直开
+//    空 JWT 恒空列表，自动不轮询）。
+//
 // 「未看过」记 localStorage（按 token 记，看过/关过就不再弹——回执感一次给足，
-// 不做成每页都追着弹的打扰条）。挂 layout 全局：A 从任意页面进站都能接上回访。
+// 不做成每页都追着弹的打扰条；回看走常驻入口 MyHemingInviteButton）。
+// 挂 layout 全局：A 从任意页面进站都能接上回访。
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { fetchMyInvites, type MyInvite } from '@/lib/invite';
 
 const SEEN_KEY = 'ziwei_invite_seen';
+const POLL_MS = 30_000;
 
 function loadSeen(): Set<string> {
   try {
@@ -37,15 +45,41 @@ export default function InviteReturnBanner() {
 
   useEffect(() => {
     let alive = true;
-    (async () => {
-      const mine = await fetchMyInvites(); // 无 JWT/网络失败均静默：回访是锦上添花
-      if (!alive) return;
-      // 最新已回应的优先（一人多枚码时只提最新那次）
-      const seen = loadSeen();
-      const found = mine.find(m => m.kind === 'heming' && m.responded && !seen.has(m.token));
-      if (found) setHit(found);
-    })().catch(() => {});
-    return () => { alive = false; };
+    let timer: ReturnType<typeof setInterval> | null = null;
+
+    const stopPoll = () => {
+      if (timer !== null) { clearInterval(timer); timer = null; }
+    };
+    // 有在挂未回应的码才轮询（等到了/没码了即停），网络失败维持现状不灭活
+    function schedule(on: boolean): void {
+      if (!on) { stopPoll(); return; }
+      if (timer === null) timer = setInterval(check, POLL_MS);
+    }
+    async function check(): Promise<void> {
+      try {
+        const mine = await fetchMyInvites(); // 无 JWT/网络失败均静默：回访是锦上添花
+        if (!alive) return;
+        // 最新已回应的优先（一人多枚码时只提最新那次）
+        const seen = loadSeen();
+        const found = mine.find(m => m.kind === 'heming' && m.responded && !seen.has(m.token));
+        if (found) { setHit(found); schedule(false); return; }
+        schedule(mine.some(m => m.kind === 'heming' && !m.responded));
+      } catch { /* 本次失败不动定时器：已有轮询继续，没有就算了 */ }
+    }
+
+    // ② 回前台补拉：A 切去微信转发卡片再切回来，是 B 回应后最高频的回访时机
+    const onVis = () => { if (document.visibilityState === 'visible') void check(); };
+    // ① 发起即刻盯：本会话刚签发的码立即纳入轮询
+    const onIssued = () => { void check(); };
+    document.addEventListener('visibilitychange', onVis);
+    window.addEventListener('ziwei:invite-issued', onIssued);
+    void check();
+    return () => {
+      alive = false;
+      stopPoll();
+      document.removeEventListener('visibilitychange', onVis);
+      window.removeEventListener('ziwei:invite-issued', onIssued);
+    };
   }, []);
 
   if (!hit) return null;
@@ -65,9 +99,9 @@ export default function InviteReturnBanner() {
       position: 'fixed', top: 0, left: 0, right: 0, zIndex: 90,
       display: 'flex', alignItems: 'center', gap: '10px',
       padding: '10px 14px calc(10px + env(safe-area-inset-top, 0))',
-      background: 'linear-gradient(135deg, rgba(122,92,190,0.95), rgba(91,63,160,0.95))',
+      background: 'var(--vip-grad)',
       color: 'white', fontSize: '13px', letterSpacing: '0.03em',
-      boxShadow: '0 4px 20px rgba(91,63,160,0.35)',
+      boxShadow: '0 4px 20px var(--vip-glow)',
     }}>
       <span style={{ fontSize: '15px' }}>☯</span>
       <span style={{ flex: 1, lineHeight: 1.5 }}>TA 回应了你们的合盘，去看看</span>
@@ -75,7 +109,8 @@ export default function InviteReturnBanner() {
         onClick={open}
         style={{
           padding: '6px 16px', borderRadius: '999px', border: 'none',
-          background: 'rgba(255,255,255,0.95)', color: '#5b3fa0',
+          // 白按钮上的紫字：固定白底用 --vip-ink（不随主题提亮）
+          background: 'rgba(255,255,255,0.95)', color: 'var(--vip-ink)',
           fontSize: '12px', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
         }}
       >查看</button>

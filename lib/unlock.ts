@@ -10,10 +10,11 @@
 // 解锁、一次给足、已解锁的分享入口随之消失、墙文案永远留替代路（不说「仅限分享」）。
 
 import { requestJSON } from '@/lib/ai';
+import { openRewardedAd } from '@/lib/mini-bridge';
 import type { ZiweiChart } from '@/lib/ziwei/types';
 
-/** 每盘免费问答次数（docs/09 §4：预设 6 问设计下认真用户几乎必撞墙） */
-export const QNA_FREE_LIMIT = 5;
+/** 每盘免费问答次数（docs/09 §4：预设 6 问设计下认真用户几乎必撞墙；2026-11-06 由 5 收紧为 3） */
+export const QNA_FREE_LIMIT = 3;
 
 // ─── 盘 id：起盘会话 uuid ──────────────────────────────────
 
@@ -71,17 +72,105 @@ export function qnaCanAsk(key: string): boolean {
   return qnaUnlocked(key) || qnaUsed(key) < QNA_FREE_LIMIT;
 }
 
+// ─── 广告钥匙（docs/11 §4.1）：看完才解锁（ref 回查确认）──────────────────
+// 点「看段光影」不再立即置位——跳 bridge 播激励视频，看完 AdWatch 记账（ref
+// 幂等），回前台回查 /ziwei/ad/summary?ref= 确认记账后才 mark+台账。无填充/
+// 中途关闭：不记账 → 不解锁，调用方提示「试试分享」。pending 存 sessionStorage
+// （不进 localStorage 白名单清理）。
+
+interface AdPending { ref: string; kind: UnlockKind; key: string; beforeTotal: number }
+const AD_PENDING = 'ziwei_ad_pending';
+
+/** 生成一次观看 ref（server AdWatch 上限 64 字符；新版 bridge 透传记账，H5 凭
+ *  它精确回查；旧版 bridge 不读 ref——回查退化用总数差分，同样可靠） */
+function newAdRef(): string {
+  return `zw-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+/** 发起广告解锁：记 pending（含点前观看总数，供旧 bridge 的差分确认）→ 跳
+ *  bridge 播放。确认在 confirmPendingAdUnlock。 */
+export function openAdUnlock(kind: UnlockKind, key: string): void {
+  const ref = newAdRef();
+  requestJSON<{ watched_total?: number }>('/api/v1/ziwei/ad/summary', 'GET')
+    .then(r => {
+      try {
+        sessionStorage.setItem(AD_PENDING,
+          JSON.stringify({ ref, kind, key, beforeTotal: r?.watched_total ?? 0 } satisfies AdPending));
+      } catch { /* 存不进：回查无从对账，本次按不解锁处理（宁可少给不白给） */ }
+      openRewardedAd(ref);
+    })
+    .catch(() => { /* 点前总数拉不到：差分确认退化为「有任何新记账即算」 */ 
+      try {
+        sessionStorage.setItem(AD_PENDING,
+          JSON.stringify({ ref, kind, key, beforeTotal: -1 } satisfies AdPending));
+      } catch { /* 同上 */ }
+      openRewardedAd(ref);
+    });
+}
+
+/** 回前台确认 pending 广告（pageshow 调）：记账确认 → mark 解锁 + 台账
+ *  source=ad，返回 true；未记账/无 pending → 清 pending 返回 false。
+ *  双通道确认（bridge 新旧都成立）：
+ *  · ref 精确回查（新版 bridge：watchZiweiAd(ref) 记账，同 ref 命中即本次看完）
+ *  · 总数差分（旧版 bridge 在线时：它不读 ref，用「观看总数 > 点前值」判定
+ *    ——bridge 只在完整看完才 POST 记账，差分等价于看完；beforeTotal=-1 表示
+ *    点前总数没拉到，退化为「有任一新记账即算」（单 web-view 实例无并发观看） */
+export async function confirmPendingAdUnlock(kind: UnlockKind): Promise<boolean> {
+  let p: AdPending | null = null;
+  try {
+    const raw = sessionStorage.getItem(AD_PENDING);
+    if (raw) p = JSON.parse(raw) as AdPending;
+  } catch { /* 忽略 */ }
+  if (!p) return false;
+  // 只消费本组件的锁：问答墙（InsightPanel）与流年锁（ChartBoard）都在
+  // pageshow 回查，共用一个 pending——不过滤则谁先跑谁吃掉，会把问答的广告
+  // 记成流年解锁（墙不收、问题不续、流年反被打开）
+  if (p.kind !== kind) return false;
+  try { sessionStorage.removeItem(AD_PENDING); } catch { /* 忽略 */ }
+  if (!p.ref || !p.kind || !p.key) return false;
+  const unlock = () => {
+    if (p.kind === 'qna_extra') markQnaUnlocked(p.key);
+    else markLiunianUnlocked(p.key);
+    unlockBy(p.kind, p.key, 'ad');
+  };
+  // 稍等记账到达（bridge navigateBack 与本回调几乎同刻，网络慢一拍）
+  for (let i = 0; i < 3; i++) {
+    try {
+      const byRef = await requestJSON<{ recorded?: boolean }>(
+        `/api/v1/ziwei/ad/summary?ref=${encodeURIComponent(p.ref)}`, 'GET');
+      if (byRef?.recorded) { unlock(); return true; }
+      // ref 未命中（旧 bridge / 记账慢）→ 总数差分兜底
+      const sum = await requestJSON<{ watched_total?: number }>(
+        '/api/v1/ziwei/ad/summary', 'GET');
+      const total = sum?.watched_total ?? 0;
+      if (p.beforeTotal >= 0 ? total > p.beforeTotal : total > 0) {
+        unlock(); return true;
+      }
+    } catch { /* 网络抖动：退避重查 */ }
+    await new Promise(res => setTimeout(res, 400));
+  }
+  return false;
+}
+
 // ─── 会员钥匙（docs/11 §5）：判定函数内短路，全部调用点零改动 ─────────────
 
 /** 会员态缓存：null=未拉取。refreshMember() 在 layout 挂载与 pageshow 时调 */
 let memberCache: boolean | null = null;
+/** 分享交互开关（server 配置经 /ziwei/me 下发）：true=分享入口跳 bridge 真面板
+ *  （需新版 bridge 已发版），false=右上角「···」引导（旧版线上即用）。 */
+let sharePanelCache = false;
+
+export function sharePanelEnabled(): boolean {
+  return sharePanelCache;
+}
 
 /** 拉取会员态（GET /ziwei/me）并刷新缓存；失败保持原值（默认非会员）。 */
 export async function refreshMember(): Promise<void> {
   try {
-    const me = await requestJSON<{ member: boolean; member_until: string | null }>(
+    const me = await requestJSON<{ member: boolean; member_until: string | null; share_panel?: boolean }>(
       '/api/v1/ziwei/me', 'GET');
     memberCache = !!me.member;
+    if (typeof me.share_panel === 'boolean') sharePanelCache = me.share_panel;
   } catch { /* 未登录/弱网：按非会员处理（memberCache 保持 null → false） */ }
 }
 
@@ -134,6 +223,17 @@ export function unlockBy(kind: UnlockKind, key: string, source: UnlockSource): v
 /** 分享入口被点击后的落账（原入口名保留，语义=source share）。 */
 export function unlockByShare(kind: UnlockKind, key: string): void {
   unlockBy(kind, key, 'share');
+}
+
+/** 台账回查（引导式分享解锁，docs/10 §4）：share_panel=true 时分享解锁不再
+ *  点按钮即给——跳 bridge 后用户点了「发送给朋友」才落账（bridge 上报），
+ *  pageshow 拉本口判真正的解锁时点；未点转发直接返回则 false（锁保留）。 */
+export async function fetchUnlockStatus(kind: UnlockKind, key: string): Promise<boolean> {
+  try {
+    const r = await requestJSON<{ unlocked: boolean }>(
+      `/api/v1/ziwei/unlocks/status?kind=${kind}&chart_key=${encodeURIComponent(key)}`, 'GET');
+    return !!r?.unlocked;
+  } catch { return false; /* 弱网按未解锁处理（锁保留，可再试） */ }
 }
 
 // ─── localStorage 卫生（docs/11 §3.2）──────────────────────

@@ -6,8 +6,9 @@ import { pushShareCard } from '@/lib/mini-bridge';
 import {
   chartKey, qnaCanAsk, qnaUnlocked, recordQnaAsk, markQnaUnlocked, unlockByShare,
   QNA_FREE_LIMIT, qnaUsed, isMember, unlockBy, refreshMember,
+  openAdUnlock, confirmPendingAdUnlock, sharePanelEnabled, fetchUnlockStatus,
 } from '@/lib/unlock';
-import { openRewardedAd, openPaySheet } from '@/lib/mini-bridge';
+import { openPaySheet, openSharePanel, miniToast } from '@/lib/mini-bridge';
 import { saveLastSession } from '@/lib/ziwei/history';
 import { reportEventOnce, reportEvent } from '@/lib/events';
 import type { ZiweiChart, Palace } from '@/lib/ziwei/types';
@@ -205,13 +206,40 @@ export default function InsightPanel({ chart, selectedPalace, selectedSiHua, ini
   const wallRef = useRef<HTMLDivElement | null>(null);
   // 解读反馈（docs/11 §3.3）：已评消息下标集合——一轮一评，防连点重复上报
   const [rated, setRated] = useState<Set<number>>(new Set());
+  // 挂起问题续答（撞墙→解锁后卡住的修复）：撞墙时这一问存进 pendingAskRef，
+  // 任一钥匙（分享/会员/广告）生效后自动重发。resumeRef 指向每次渲染的最新
+  // 续答函数——pageshow 监听只挂一次，直接引用会锁死首帧闭包的 cKey/chart
+  const pendingAskRef = useRef<{ text: string; hidden: boolean } | null>(null);
+  // pageshow 监听闭包用的镜像 ref（只挂一次的监听读 state 会锁死首帧值）
+  const walledRef = useRef(false);
+  const cKeyRef = useRef('');
+  useEffect(() => { walledRef.current = walled; }, [walled]);
+  useEffect(() => { cKeyRef.current = cKey; }, [cKey]);
+  const [hasPendingAsk, setHasPendingAsk] = useState(false);
+  const resumeRef = useRef<() => void>(() => {});
   // 会员支付回来自动收墙（docs/10 §5.3）：pageshow（bridge 收银台 navigateBack
   // 回 H5）刷新 member 态，已开通则墙即刻消失——「会员直接用，不阻塞」
   useEffect(() => {
     const onShow = () => {
       refreshMember().then(() => {
-        if (isMember()) setWalled(false);
+        if (isMember()) { setWalled(false); resumeRef.current(); }
       });
+      // 广告钥匙回查（docs/11 §4.1）：bridge 看完记账才解锁；无填充/中途关
+      // 不记账——提示走分享，不白给。只认问答锁的 pending（流年归 ChartBoard）
+      confirmPendingAdUnlock('qna_extra').then(ok => {
+        if (ok) { setWalled(false); resumeRef.current(); }
+      });
+      // 分享钥匙回查（引导式，share_panel=true）：bridge 里点了「发送给朋友」
+      // 台账才有行——命中即解锁收墙续答；没点直接返回则墙保留
+      if (walledRef.current) {
+        fetchUnlockStatus('qna_extra', cKeyRef.current).then(ok => {
+          if (ok) {
+            markQnaUnlocked(cKeyRef.current);
+            setWalled(false);
+            resumeRef.current();
+          }
+        });
+      }
     };
     window.addEventListener('pageshow', onShow);
     return () => window.removeEventListener('pageshow', onShow);
@@ -376,7 +404,10 @@ ${selectedSiHua.starName}化${selectedSiHua.siHua}落在【${palaceName}】，�
   const sendMessage = (text: string, hidden = false, byUser = false) => {
     if (!text.trim() || loadingRef.current) return;
     if (byUser && !qnaCanAsk(cKey)) {
-      // 撞墙：免费额度用完且未分享解锁——出墙（合规：留替代路，不说「仅限分享」）
+      // 撞墙：免费额度用完且未分享解锁——出墙（合规：留替代路，不说「仅限分享」）。
+      // 这一问挂起不丢：解锁后 resumePendingAsk 自动重发
+      pendingAskRef.current = { text, hidden };
+      setHasPendingAsk(true);
       setWalled(true);
       // 数据事件面（docs/11 §1）：墙曝光每盘一记（reportEventOnce 幂等），撞墙率
       // = qna_wall / interpret_done 的 session——转化看台账 qna_extra 行
@@ -403,14 +434,40 @@ ${selectedSiHua.starName}化${selectedSiHua.siHua}落在【${palaceName}】，�
     streamResponse(roundMessages, byUser);
   };
 
+  // 续答：挂起的问题在钥匙生效后自动重发。流式中（选宫等自动注入还在跑）
+  // 不硬插——短间隔重试到空闲为止，挂起的问题不丢
+  const resumePendingAsk = () => {
+    const p = pendingAskRef.current;
+    if (!p || !qnaCanAsk(cKey)) return;
+    if (loadingRef.current) {
+      setTimeout(() => resumeRef.current(), 600);
+      return;
+    }
+    pendingAskRef.current = null;
+    setHasPendingAsk(false);
+    sendMessage(p.text, p.hidden, true);
+  };
+  resumeRef.current = resumePendingAsk;
+
   // 分享解锁（docs/09 §7.4）：解锁信号 = 分享入口被点击——推转发卡素材即解锁
   //（本地置位，点按钮即生效，永不被弱网卡住），server 台账 fire-and-forget。
   // 一次给足：本盘不限次，墙永久消失。
   const shareUnlock = () => {
-    pushShareCard({ title: '我的紫微命盘 · 倪海厦正宗解读', ch: 'qna' });
+    const title = '我的紫微命盘 · 倪海厦正宗解读';
+    pushShareCard({ title, ch: 'qna' });
+    if (sharePanelEnabled()) {
+      // 引导式分享解锁（docs/10 §4）：点按钮不解锁——跳 bridge，用户点了
+      // 「发送给朋友」才落账；回来 pageshow 回查命中才收墙续答。没点转发
+      // 直接返回：墙保留（这才是「引导分享」的语义）
+      openSharePanel({ title, ch: 'qna', lock: { kind: 'qna_extra', chartKey: cKey } });
+      return;
+    }
+    // 旧版线上（bridge 未发版）：维持点即给（合规口径不变），墙收 + 挂起续答
     unlockByShare('qna_extra', cKey);
     markQnaUnlocked(cKey);
     setWalled(false);
+    resumePendingAsk();
+    miniToast('✦ 已解锁 · 继续解读');
   };
 
   const handleTopicClick = (topicKey: string) => {
@@ -538,20 +595,25 @@ ${selectedSiHua.starName}化${selectedSiHua.siHua}落在【${palaceName}】，�
             exit={{ opacity: 0, y: 8 }}
             className="flex-shrink-0 mx-3 mb-2 rounded-xl p-3"
             style={{
-              background: 'rgba(122,92,190,0.08)',
-              border: '1px solid rgba(122,92,190,0.25)',
+              background: 'var(--vip-bg)',
+              border: '1px solid var(--vip-bdr)',
             }}
           >
             <div className="text-[11px] mb-2" style={{ color: 'var(--t-text)', lineHeight: 1.7 }}>
               这张盘的 {QNA_FREE_LIMIT} 次免费解读已经用完。分享给朋友，<b>这张盘</b>的解读就不限次数了——
               <span style={{ color: 'var(--t-faint)' }}>或开通会员处处不限，或看段光影同样解锁。</span>
             </div>
+            {hasPendingAsk && (
+              <div className="text-[10px] mb-2" style={{ color: 'var(--t-gold)', opacity: 0.85 }}>
+                ✦ 你刚才的问题已留着，解锁后自动接着解读
+              </div>
+            )}
             <div className="flex gap-2">
               <button
                 onClick={shareUnlock}
                 className="flex-1 py-2 rounded-lg text-[11px] font-semibold transition-all"
                 style={{
-                  background: 'linear-gradient(135deg, #7a5cbe, #5b3fa0)',
+                  background: 'var(--vip-grad)',
                   color: 'white', letterSpacing: '0.08em',
                   cursor: 'pointer',
                 }}
@@ -572,15 +634,7 @@ ${selectedSiHua.starName}化${selectedSiHua.siHua}落在【${palaceName}】，�
             </div>
             <div className="flex gap-2 mt-2" style={{ justifyContent: 'center' }}>
               <button
-                onClick={() => {
-                  // 广告钥匙（docs/11 §4.1）：与分享同权限——本盘一次给足不限次。
-                  // 点按钮即解锁（bridge AdWatch 记账与本地互不依赖，同分享的
-                  // 「不验证真分享」口径）；台账 source=ad 归因
-                  markQnaUnlocked(cKey);
-                  unlockBy('qna_extra', cKey, 'ad');
-                  setWalled(false);
-                  openRewardedAd();
-                }}
+                onClick={() => openAdUnlock('qna_extra', cKey)}
                 className="text-[11px] underline underline-offset-2"
                 style={{ color: 'var(--t-faint)', background: 'transparent',
                   border: 'none', cursor: 'pointer', padding: '2px 6px' }}
@@ -589,7 +643,7 @@ ${selectedSiHua.starName}化${selectedSiHua.siHua}落在【${palaceName}】，�
               </button>
               <span style={{ color: 'var(--t-faint)', fontSize: 11, alignSelf: 'center' }}>·</span>
               <button
-                onClick={() => setWalled(false)}
+                onClick={() => { pendingAskRef.current = null; setHasPendingAsk(false); setWalled(false); }}
                 className="text-[11px] underline underline-offset-2"
                 style={{ color: 'var(--t-faint)', background: 'transparent',
                   border: 'none', cursor: 'pointer', padding: '2px 6px' }}

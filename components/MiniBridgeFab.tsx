@@ -69,7 +69,7 @@ export default function MiniBridgeFab() {
         </button>
       )}
       <button
-        onClick={openRewardedAd}
+        onClick={() => openRewardedAd()}
         className="text-[11px] rounded-full px-3 py-2 transition-opacity active:opacity-60"
         style={pillStyle}
       >

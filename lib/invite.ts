@@ -59,6 +59,22 @@ export async function createHemingInvite(form: BirthFormState): Promise<InviteIs
   });
 }
 
+// ─── A 侧：本机在挂合盘码（「我的合盘邀请」常驻入口的数据源）────────────
+// 服务端「同 kind 未消费复用」保证在挂的 heming 码至多一枚，单值即够：
+// 发新码自然覆盖，被消费的旧码凭 token 仍可回访（result 按 token 查）。
+
+const MY_HEMING_KEY = 'ziwei_my_heming_invite';
+
+/** 签发成功记一枚本机码：常驻入口「☯ 我的合盘邀请」据此渲染/进结果页 */
+export function saveMyHemingInvite(token: string): void {
+  try { localStorage.setItem(MY_HEMING_KEY, token); } catch { /* 隐私模式存不进就算了 */ }
+}
+
+/** 读本机最近一枚合盘码；未发起过/隐私模式返回 null（入口不渲染） */
+export function loadMyHemingInvite(): string | null {
+  try { return localStorage.getItem(MY_HEMING_KEY); } catch { return null; }
+}
+
 // ─── B 侧：公开卡面（免登录）──────────────────────────────
 
 export interface InviteCard {

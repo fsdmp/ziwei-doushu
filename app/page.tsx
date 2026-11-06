@@ -512,6 +512,15 @@ export default function HomePage() {
             style={{ border: `1px solid ${c.navBorder}`, color: c.textMuted }}>
             合盘
           </motion.button>
+          {/* 云端档案入口（docs/10 §0.3，2026-11-06 首页放开）：会员识别紫，
+              灰(合盘)→紫(档案)→金(起盘) 三层；会员判定在档案页内分流 */}
+          <motion.button
+            whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
+            onClick={() => router.push('/archive')}
+            className="text-[11px] sm:text-xs px-2.5 sm:px-4 py-1 sm:py-1.5 rounded-full transition-all duration-300"
+            style={{ border: '1px solid var(--vip-bdr)', color: 'var(--vip)', background: 'var(--vip-bg)' }}>
+            云端档案
+          </motion.button>
           <motion.button
             whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
             onClick={() => router.push('/chart')}

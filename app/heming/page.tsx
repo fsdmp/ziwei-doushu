@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import BirthForm, { type BirthFormState } from '@/components/BirthForm';
 import ShareButton from '@/components/ShareButton';
 import HemingInviteButton from '@/components/HemingInviteButton';
+import MyHemingInviteButton from '@/components/MyHemingInviteButton';
 import AiContent from '@/components/AiContent';
 import { streamAI, type AIError } from '@/lib/ai';
 import { formToBirthInfo } from '@/lib/ziwei/share';
@@ -173,10 +174,11 @@ export default function HemingPage() {
             回到上次
           </button>
         )}
+        {/* 云端档案入口：会员紫（与 chart 页 .chart-archive-btn 同色，尺寸随本头部紧凑款） */}
         <button
           onClick={() => router.push('/archive')}
-          style={{ fontSize: '12px', color: 'var(--tx-3)', background: 'none',
-            border: '1px solid var(--bdr-med)', borderRadius: '8px', padding: '4px 10px', cursor: 'pointer' }}
+          style={{ fontSize: '12px', color: 'var(--vip)', background: 'var(--vip-bg)',
+            border: '1px solid var(--vip-bdr)', borderRadius: '8px', padding: '4px 10px', cursor: 'pointer' }}
         >
           ✦ 云端档案
         </button>
@@ -212,6 +214,8 @@ export default function HemingPage() {
                 「想知道和 TA 的关系」是裂变引擎第一排序，比物质奖励强 */}
             <div style={{ marginTop: '16px', textAlign: 'center' }}>
               <HemingInviteButton form={formA} />
+              {' '}
+              <MyHemingInviteButton />
               <p style={{ fontSize: '10px', color: 'var(--tx-3)', marginTop: '8px', lineHeight: 1.6 }}>
                 转发给 TA，对方填好生辰就能看到你们的合盘
               </p>

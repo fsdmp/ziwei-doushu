@@ -344,10 +344,10 @@ export default function InviteClient() {
                     onClick={deepRead}
                     style={{
                       padding: '13px 36px', borderRadius: 'var(--r-pill, 999px)', border: 'none',
-                      background: 'linear-gradient(135deg, #7a5cbe, #5b3fa0)',
+                      background: 'var(--vip-grad)',
                       color: 'white', fontSize: '13px', fontWeight: 600,
                       letterSpacing: '0.15em', cursor: 'pointer',
-                      boxShadow: '0 4px 12px rgba(91,63,160,0.3)',
+                      boxShadow: '0 4px 12px var(--vip-glow)',
                     }}
                   >
                     ✦ AI 深度合盘

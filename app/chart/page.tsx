@@ -5,6 +5,7 @@ import BirthForm, { type BirthFormState } from '@/components/BirthForm';
 import ChartBoard from '@/components/ChartBoard';
 import InsightPanel from '@/components/InsightPanel';
 import HemingInviteButton from '@/components/HemingInviteButton';
+import MyHemingInviteButton from '@/components/MyHemingInviteButton';
 import ShareButton, { birthForShare } from '@/components/ShareButton';
 import { pushShareCard } from '@/lib/mini-bridge';
 import { newSessionId } from '@/lib/unlock';
@@ -37,8 +38,33 @@ function mingStarsHighlight(chart: ZiweiChart): string | undefined {
 /** 转发卡默认标题：ShareButton 的兜底文案与起盘时静默 push 用同一份，避免两处漂移 */
 const SHARE_TITLE = '紫微斗数 · 起一张你的命盘';
 
-/** 起盘后主动提示「和 TA 合一张盘」的频控键（docs/09 §3.1：24h 内主动提示 1 次，可关） */
-const HEMING_HINT_KEY = 'ziwei_heming_hint_at';
+/** 档案续问恢复：盘 JSON 的 BirthInfo（时辰索引 + 原始输入）换回表单态——
+ *  合盘邀请/分享卡的生辰原料。origInput 优先（子时换日换算前的用户原话）；
+ *  缺它 = 时辰不详起盘，unknownTime 置位（邀请按钮对 unknownTime 同样放行）。 */
+function formFromBirthInfo(b: BirthInfo): BirthFormState {
+  const o = b.origInput;
+  return {
+    name: b.name ?? '',
+    calendar: 'solar',
+    year: String(o?.year ?? b.year),
+    month: String(o?.month ?? b.month),
+    day: String(o?.day ?? b.day),
+    lunarLeap: false,
+    clockHour: o ? String(o.clockHour) : '',
+    clockMinute: o ? String(o.clockMinute) : '',
+    unknownTime: !o,
+    province: b.province ?? '',
+    city: b.city ?? '',
+    longitude: b.longitude ?? 120,
+    gender: b.gender,
+  };
+}
+
+/** 起盘后主动提示「和 TA 合一张盘」的关闭记忆（sessionStorage，会话级）：
+ *  2026-11-06 口径调整——原 24h 频控（localStorage 时间戳）让横幅「有时显示有时
+ *  不显示」反直觉，且抑制的恰是起盘高潮点（合盘意愿最强时刻）。现改为：每次
+ *  起盘都提示；用户点 × 后本次浏览会话不再弹（sessionStorage 随会话结束清除） */
+const HEMING_HINT_DISMISSED = 'ziwei_heming_hint_dismissed';
 
 export default function ChartPage() {
   const router = useRouter();
@@ -65,7 +91,12 @@ export default function ChartPage() {
       if (raw) {
         sessionStorage.removeItem('ziwei_archive_restore');
         const restored = JSON.parse(raw) as ZiweiChart;
-        if (restored && restored.palaces) setChart(restored);
+        if (restored && restored.palaces) {
+          setChart(restored);
+          // 生辰一并换回表单态：合盘邀请/分享卡入口（HemingInviteButton/ShareButton）
+          // 都以 savedForm 为原料，不恢复则档案续问回来这两个按钮静默消失
+          if (restored.birthInfo) setSavedForm(formFromBirthInfo(restored.birthInfo));
+        }
       }
     } catch { /* 恢复失败走表单 */ }
   }, []);
@@ -73,12 +104,16 @@ export default function ChartPage() {
   useEffect(() => {
     if (!chart) return;
     try {
-      const last = Number(localStorage.getItem(HEMING_HINT_KEY) || '0');
-      if (Date.now() - last < 24 * 3600 * 1000) return;
-      localStorage.setItem(HEMING_HINT_KEY, String(Date.now()));
+      if (sessionStorage.getItem(HEMING_HINT_DISMISSED) === '1') return;
       setHemingHint(true);
     } catch { /* 隐私模式按不提示处理 */ }
   }, [chart]);
+
+  // 关闭 = 本次浏览不再主动提示（新会话/明天再起盘会再有）
+  const dismissHemingHint = () => {
+    setHemingHint(false);
+    try { sessionStorage.setItem(HEMING_HINT_DISMISSED, '1'); } catch { /* 忽略 */ }
+  };
 
   // ── 未起盘：展示出生信息表单 ──
   if (!chart) {
@@ -91,20 +126,33 @@ export default function ChartPage() {
         <p style={{ color: '#888', marginBottom: 32, fontSize: 14, lineHeight: 1.7 }}>
           输入出生年月日时，排盘引擎即时生成命盘。
         </p>
-        {lastSolo && (
+        {/* 表单态入口行：「回到上次」有本地会话才出；云端档案常驻（docs/10 §0.3，
+            2026-11-06 起盘页放开——起盘前就让人知道「解读能存」） */}
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
+          {lastSolo && (
+            <button
+              type="button"
+              onClick={() => {
+                if (!lastSolo.chart) return;
+                setChart(lastSolo.chart as ZiweiChart);
+                setRestoredMsgs(lastSolo.messages ?? []);
+                // 生辰一并恢复（heming 页恢复 formA 同款）：否则工具栏合盘邀请按钮
+                // 与分享卡生辰在「回到上次」后静默消失
+                if (lastSolo.form) setSavedForm(lastSolo.form);
+              }}
+              className="chart-reset-btn"
+            >
+              ✦ 回到上次 · 继续那张盘
+            </button>
+          )}
           <button
             type="button"
-            onClick={() => {
-              if (!lastSolo.chart) return;
-              setChart(lastSolo.chart as ZiweiChart);
-              setRestoredMsgs(lastSolo.messages ?? []);
-            }}
-            className="chart-reset-btn"
-            style={{ marginBottom: 16 }}
+            onClick={() => router.push('/archive')}
+            className="chart-archive-btn"
           >
-            ✦ 回到上次 · 继续那张盘
+            ✦ 档案
           </button>
-        )}
+        </div>
         <BirthForm
           onSubmit={(info: BirthInfo) => {
             const next = generateChart(info);
@@ -155,15 +203,17 @@ export default function ChartPage() {
           />
           {/* 合盘邀请常驻入口（docs/09 §3.1：常驻入口收进 ShareButton 同排）：
               生辰在手，发起即存 payload */}
-          <HemingInviteButton form={savedForm} />
+          <HemingInviteButton form={savedForm} label="☯ 合盘" />
+          {/* A 侧回访常驻入口：签发过合盘码才渲染，未回应=等待态/已回应=完整合盘 */}
+          <MyHemingInviteButton />
           {/* 云端档案入口（docs/10 §5.2）：非会员也可见，点进引导开会员——
-              这个功能自带的转化曝光位 */}
+              这个功能自带的转化曝光位；会员紫与工具栏灰按钮拉开层级 */}
           <button
             type="button"
             onClick={() => router.push('/archive')}
-            className="chart-reset-btn"
+            className="chart-archive-btn"
           >
-            ✦ 云端档案
+            ✦ 档案
           </button>
         </div>
 
@@ -175,12 +225,12 @@ export default function ChartPage() {
               gridColumn: '1 / -1',
               display: 'flex', alignItems: 'center', gap: '10px',
               padding: '12px 16px', borderRadius: '12px',
-              background: 'rgba(122,92,190,0.08)',
-              border: '1px solid rgba(122,92,190,0.25)',
+              background: 'var(--vip-bg)',
+              border: '1px solid var(--vip-bdr)',
               fontSize: '13px', color: 'var(--tx-1)',
             }}
           >
-            <span style={{ color: '#7a5cbe' }}>☯</span>
+            <span style={{ color: 'var(--vip)' }}>☯</span>
             <span style={{ flex: 1, lineHeight: 1.6 }}>
               盘已起好——<b>和 TA 合一张盘？</b>发给那个你想懂的人
             </span>
@@ -188,10 +238,10 @@ export default function ChartPage() {
             <button
               type="button"
               aria-label="关闭"
-              onClick={() => setHemingHint(false)}
+              onClick={dismissHemingHint}
               style={{
                 width: '22px', height: '22px', borderRadius: '50%', border: 'none',
-                background: 'rgba(122,92,190,0.12)', color: '#7a5cbe',
+                background: 'var(--vip-bg)', color: 'var(--vip)',
                 fontSize: '13px', cursor: 'pointer', lineHeight: 1, flexShrink: 0,
               }}
             >×</button>
@@ -216,15 +266,6 @@ export default function ChartPage() {
           align-items: center;
           gap: 8px;
           margin-bottom: 4px;
-        }
-        .chart-reset-btn {
-          padding: 6px 14px;
-          cursor: pointer;
-          border: 1px solid var(--bdr-med);
-          border-radius: 8px;
-          background: transparent;
-          color: var(--tx-2);
-          font-size: 13px;
         }
         @media (min-width: 1024px) {
           .chart-page-grid {

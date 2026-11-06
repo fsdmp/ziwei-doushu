@@ -95,7 +95,7 @@ export default function ChatPanel({ chart }: ChatPanelProps) {
         {inMini && (
           <div className="flex gap-1.5 flex-shrink-0">
             <button
-              onClick={openRewardedAd}
+              onClick={() => openRewardedAd()}
               className="text-[10px] rounded-full px-2.5 py-1 transition-opacity active:opacity-60"
               style={{ border: '1px solid rgba(212,168,67,0.35)', color: 'var(--t-gold)', background: 'transparent' }}
             >看视频</button>
