@@ -7,7 +7,7 @@ import { useTheme } from '@/components/ThemeProvider';
 import SelectField from '@/components/SelectField';
 import { PROVINCES } from '@/lib/ziwei/cities';
 import { lunarMonthDayCount, leapMonthOfLunarYear, lunarToSolar } from '@/lib/ziwei/lunar-solar';
-import { formToBirthInfo } from '@/lib/ziwei/share';
+import { formToBirthInfo, calcTrueSolarBranch } from '@/lib/ziwei/share';
 
 export interface BirthFormState {
   name: string;
@@ -37,15 +37,6 @@ interface BirthFormProps {
 }
 
 const SHICHEN_NAMES = ['子', '丑', '寅', '卯', '辰', '巳', '午', '未', '申', '酉', '戌', '亥'];
-
-/** 根据北京时间 + 经度计算真太阳时时辰支 (0-11) */
-function calcTrueSolarBranch(clockHour: number, clockMinute: number, longitude: number): number {
-  const clockMins = clockHour * 60 + clockMinute;
-  const offset = (longitude - 120) * 4;
-  const solar = ((clockMins + offset) % 1440 + 1440) % 1440;
-  if (solar >= 1380 || solar < 60) return 0;
-  return Math.floor((solar - 60) / 120) + 1;
-}
 
 /** 检查日期是否合法 */
 function isValidDate(y: number, m: number, d: number): boolean {

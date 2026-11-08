@@ -48,6 +48,7 @@ export default function HemingPage() {
       if (r.chartA?.palaces && r.chartB?.palaces) {
         setChartA(r.chartA);
         setChartB(r.chartB);
+        if (r.chartA.sessionId) sessIdRef.current = r.chartA.sessionId;
         if (r.chartA.birthInfo) setFormA(formFromBirthInfo(r.chartA.birthInfo));
         if (r.chartB.birthInfo) setFormB(formFromBirthInfo(r.chartB.birthInfo));
         if (r.analysis) setAnalysis(r.analysis);
@@ -66,6 +67,10 @@ export default function HemingPage() {
   const [authExpired, setAuthExpired] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const analysisRef = useRef<HTMLDivElement>(null);
+  // 当前合盘会话 id：只在起盘动作生成，与盘的生成/重建解耦（追问沿用同一 id，
+  // server interpret_done/档案按它归并）；恢复通道（archive 载荷、回到上次）从
+  // 带来的盘上同步——续问落库归并同一行盘
+  const sessIdRef = useRef<string | null>(null);
 
   // ─── 起盘（单次调用，返回 chart 给统一流程使用）──────────
   // 开源版不含后端 /api/generate：直接用本仓库的排盘引擎在浏览器里起盘
@@ -94,34 +99,33 @@ export default function HemingPage() {
     setAuthExpired(false);
 
     try {
-      // 并行起两张盘（如果还没起）；农历输入换算失败（日期不存在）在此拦下
+      // 每次按当前表单起盘，避免编辑出生信息后复用旧盘（上游 #52）；
+      // 农历输入换算失败（日期不存在）在此拦下
       const infoA = formToBirthInfo(formA!);
       const infoB = formToBirthInfo(formB!);
       if (!infoA || !infoB) {
         setFormError('农历日期不存在，请核对双方出生日期（闰月 / 当月天数）');
         return;
       }
-      let cA = chartA;
-      let cB = chartB;
-      const [newA, newB] = await Promise.all([
-        cA ? Promise.resolve(cA) : generateChart(infoA),
-        cB ? Promise.resolve(cB) : generateChart(infoB),
+      const [cA, cB] = await Promise.all([
+        generateChart(infoA),
+        generateChart(infoB),
       ]);
-      cA = newA;
-      cB = newB;
       if (!cA || !cB) {
         setAnalysisError(true);
         setAnalyzing(false);
         return;
       }
-      // 甲盘挂起盘会话 id（server interpret_done/档案按甲盘 sessionId 归因，
-      // 与 solo 口径一致：一次起盘一个 uuid）
-      if (!cA.sessionId) cA.sessionId = newSessionId();
-      if (!chartA) setChartA(cA);
-      if (!chartB) setChartB(cB);
-      // 数据事件面（docs/11 §1）：一次合盘起盘一记（追问不重复记——cA 已有 id）
-      reportEventOnce('chart_new', cA.sessionId, { chart_kind: 'heming', from: 'fresh' });
-      touchSession(cA.sessionId);
+      // 会话 id 只在起盘动作生成，与盘的重建解耦（与 solo 口径一致：一次起盘
+      // 一个 uuid）：本页已有会话（追问/恢复通道带来）沿用，首次起盘才生成
+      const sid = sessIdRef.current ?? newSessionId();
+      sessIdRef.current = sid;
+      cA.sessionId = sid; // server interpret_done/档案按甲盘 sessionId 归因
+      setChartA(cA);
+      setChartB(cB);
+      // 数据事件面（docs/11 §1）：一次合盘起盘一记（同 id 自动去重，追问不重复记）
+      reportEventOnce('chart_new', sid, { chart_kind: 'heming', from: 'fresh' });
+      touchSession(sid);
 
       let acc = '';
       await streamAI('/api/v1/ziwei/heming', { chartA: cA, chartB: cB, question: q ?? undefined }, (_delta, full) => {
@@ -143,7 +147,7 @@ export default function HemingPage() {
     } finally {
       setAnalyzing(false);
     }
-  }, [chartA, chartB, formA, formB, generateChart]);
+  }, [formA, formB, generateChart]);
 
   const cardStyle = {
     background: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.9)',
@@ -192,6 +196,8 @@ export default function HemingPage() {
               if (lastHeming.formB) setFormB(lastHeming.formB);
               setChartA(lastHeming.chart as typeof chartA);
               if (lastHeming.chartB) setChartB(lastHeming.chartB as typeof chartB);
+              // 恢复通道同步会话 id：续问沿用原 id 落库归并同一行盘
+              sessIdRef.current = (lastHeming.chart as ZiweiChart).sessionId ?? sessIdRef.current;
               if (lastHeming.analysis) setAnalysis(lastHeming.analysis);
             }}
             style={{ fontSize: '12px', color: 'var(--tx-3)', background: 'none',

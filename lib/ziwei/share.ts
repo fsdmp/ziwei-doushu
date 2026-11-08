@@ -1,14 +1,13 @@
 import type { BirthFormState } from '@/components/BirthForm';
 import type { BirthInfo } from './types';
 import { lunarToSolar } from './lunar-solar';
+import { branchFromSolarMinutes, resolveZiweiDayOffset, shiftGregorianDate } from './true-solar-time';
 
-/** 根据北京时间 + 经度计算真太阳时时辰支 (0-11) */
+/** 根据北京时间 + 经度计算真太阳时时辰支 (0-11)。
+ *  边界规则只有一份实现：true-solar-time.ts 的 branchFromSolarMinutes。 */
 export function calcTrueSolarBranch(clockHour: number, clockMinute: number, longitude: number): number {
-  const clockMins = clockHour * 60 + clockMinute;
-  const offset = (longitude - 120) * 4;
-  const solar = ((clockMins + offset) % 1440 + 1440) % 1440;
-  if (solar >= 1380 || solar < 60) return 0;
-  return Math.floor((solar - 60) / 120) + 1;
+  const solar = clockHour * 60 + clockMinute + (longitude - 120) * 4;
+  return branchFromSolarMinutes(((solar % 1440) + 1440) % 1440);
 }
 
 /** BirthFormState → BirthInfo
@@ -16,15 +15,17 @@ export function calcTrueSolarBranch(clockHour: number, clockMinute: number, long
  * 农历输入先换算成公历（lunarToSolar，闰月不存在/当月无此日返回 null），
  * 后续规则一律作用于公历排盘日。
  *
- * 子时规则（倪海厦体系/三合派标准）：
- * · 23:00-23:59 = 晚子时，**按次日**排盘（日期 +1）
- * · 00:00-00:59 = 早子时，按本日排盘
+ * 子时规则（倪海厦体系/三合派标准，按经度校正后的真太阳时判定）：
+ * · 真太阳时 23:00-23:59 = 晚子时，**按次日**排盘（日期 +1）
+ * · 真太阳时 00:00-00:59 = 早子时，按本日排盘
  * 这与「时辰支同为子(0)」并不冲突——子时分早晚两段，需要在日期上区分。
+ * 时辰支与换日共用同一份真太阳时换算（true-solar-time.ts），口径天然一致。
  */
 export function formToBirthInfo(form: BirthFormState): BirthInfo | null {
   let y = parseInt(form.year) || 0;
   let m = parseInt(form.month) || 0;
   let d = parseInt(form.day) || 0;
+  let hour = 0;
 
   // 原始输入快照：必须在换算/换日改写 y/m/d 之前抓取——历法、闰月、
   // 用户原话年月日与时辰是否详尽都留在这里（档案标签按所选历法显示、
@@ -45,20 +46,18 @@ export function formToBirthInfo(form: BirthFormState): BirthInfo | null {
     y = solar.year; m = solar.month; d = solar.day;
   }
 
-  // 晚子时（23:00-23:59）按次日处理：用 Date 对象自动处理月末/年末进位
+  // 晚子时换日按真太阳时判定，与时辰支同一口径（见 true-solar-time.ts 的 resolveZiweiDayOffset）。
+  // 只看钟表 23 点会和经度校正后的时辰错位：东经 100° 钟表 23:30 是真太阳时 22:10 亥时，不该换日。
   if (!form.unknownTime) {
-    const clockHour = parseInt(form.clockHour) || 0;
-    if (clockHour === 23 && y > 0 && m > 0 && d > 0) {
-      const next = new Date(y, m - 1, d + 1);
-      y = next.getFullYear();
-      m = next.getMonth() + 1;
-      d = next.getDate();
+    const solar = (parseInt(form.clockHour) || 0) * 60 + (parseInt(form.clockMinute) || 0) + (form.longitude - 120) * 4;
+    const normalizedMinutes = ((solar % 1440) + 1440) % 1440;
+    hour = branchFromSolarMinutes(normalizedMinutes);
+    const dayOffset = resolveZiweiDayOffset({ dayOffset: Math.floor(solar / 1440), normalizedMinutes, branch: hour });
+    if (dayOffset !== 0 && y > 0 && m > 0 && d > 0) {
+      ({ year: y, month: m, day: d } = shiftGregorianDate({ year: y, month: m, day: d }, dayOffset));
     }
   }
 
-  const hour = form.unknownTime
-    ? 0
-    : calcTrueSolarBranch(parseInt(form.clockHour) || 0, parseInt(form.clockMinute) || 0, form.longitude);
   return {
     year: y, month: m, day: d,
     hour,
