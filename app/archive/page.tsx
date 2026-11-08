@@ -7,6 +7,7 @@ import { refreshMember, isMember, touchSession } from '@/lib/unlock';
 import { loadLastSession, LAST_SESSION_EVENT, type LastSession } from '@/lib/ziwei/history';
 import { archiveQDisplay } from '@/lib/ziwei/q-label';
 import ChartBoard from '@/components/ChartBoard';
+import AiContent from '@/components/AiContent';
 import type { ZiweiChart } from '@/lib/ziwei/types';
 
 /**
@@ -426,7 +427,9 @@ export default function ArchivePage() {
               <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>
                 问：{m.question ? archiveQDisplay(m.question).label : '（默认综合解读）'}
               </div>
-              <div style={{ fontSize: 12.5, lineHeight: 1.85, whiteSpace: 'pre-wrap', color: 'var(--t-text, #ccc)' }}>{m.answer}</div>
+              {/* 与聊天面板/heming 页同一渲染口径（**【小节】** 金色头 + **加粗**）：
+                  此前 pre-wrap 纯文本，markdown 记号原样露出（2026-11-08 真机反馈） */}
+              <AiContent text={m.answer} />
             </div>
           ))}
         </>
