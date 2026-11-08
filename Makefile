@@ -67,9 +67,10 @@ upload: build ## rsync 同步到服务器（--delete 清旧 hash 资源，排除
 	rsync -az --delete \
 	  --exclude='MP_verify_*.txt' \
 	  --exclude='wLKL4DZ96W.txt' \
+	  --exclude='vjrssHFjy5.txt' \
 	  --exclude='.well-known/' \
 	  out/ $(SERVER):$(REMOTE_DIR)/
-	@echo "==> 已同步 [$(ENV)] $(SERVER):$(REMOTE_DIR)/（MP_verify_*.txt、wLKL4DZ96W.txt 与 .well-known 保留，旧 hash 资源已清理）"
+	@echo "==> 已同步 [$(ENV)] $(SERVER):$(REMOTE_DIR)/（校验文件 MP_verify_*.txt/wLKL4DZ96W.txt/vjrssHFjy5.txt 与 .well-known 保留，旧 hash 资源已清理）"
 
 release: upload verify ## 一键发布：upload + 线上验证
 

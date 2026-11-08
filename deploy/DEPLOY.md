@@ -27,6 +27,9 @@ make upload               # 只传不验（构建 + rsync，不碰验证）
 make verify               # 只验线上（需本地已有 out/，对比构建指纹）
 ```
 
+不在开发机旁时也可用服务器侧脚本 `deploy-ziwei` / `deploy-test-ziwei`
+（服务器本机构建，注意先 `git pull`，详见下文「服务器侧一键脚本」）。
+
 `ENV`（prod 默认 / test）决定 `SITE` 与 `REMOTE_DIR` 的默认值并注入构建
 （`NEXT_PUBLIC_SITE_URL`，压过 `.env.production`——sitemap/canonical/分享链接/
 合盘邀请链接全由它取值，两环境各自正确）。其余参数可覆盖：
@@ -39,14 +42,45 @@ webpack 形如 `main-app-1175c1c0d82b673a.js`，文件名即指纹）。`make ve
 且 `/chart`、`/invite`、`/archive`、`/open-in-mini.html` 返回 200——指纹一致即证明「线上跑的正是
 本次构建」（nginx 已配 HTML 不缓存，同步即生效）。
 
+## 服务器侧一键脚本（2026-11-08 增，与 make release 并存）
+
+服务器上另有一对同构脚本，**在服务器本机构建**（适合不在开发机旁时应急发布，
+或本地构建环境不可用）：
+
+| 脚本 | 目标 |
+| --- | --- |
+| `/usr/local/bin/deploy-ziwei` | 正式站（构建后 rsync → `/usr/local/ziwei-static/html/`） |
+| `/usr/local/bin/deploy-test-ziwei` | 测试站（构建后 rsync → `/usr/local/test-ziwei-static/html/`） |
+
+- 构建目录 `/root/ziwei/ziwei-doushu`，`npx next build --webpack`——服务器仅
+  1.8G 内存且 `vm.swappiness=0`（内核宁杀不换页），Turbopack 编译期必 OOM，
+  故脚本临时调 `vm.swappiness=100`（trap 退出还原）+ 4G swap
+  + `--max-old-space-size=3072` 走 webpack。
+- `NEXT_PUBLIC_SITE_URL` 各自注入（ziwei / test-ziwei 域名），语义同 Makefile。
+- rsync 同为 `--delete`，exclude 清单与 Makefile 是**两份手工拷贝，改任一方必须同步另一方**。
+
+⚠️ 两个坑：
+
+1. **脚本不 `git pull`**——构建的是 `/root/ziwei/ziwei-doushu` 当前 checkout，
+   发布前需手动上去拉新并核对 `git log -1`。
+   2026-11-08 曾发现该 checkout 落后 main 40 个 commit，直接跑会把旧代码发上线。
+2. **指纹口径不通用**——服务器脚本走 webpack、本地 `make build` 走 Turbopack，
+   chunk 文件名体系不同；服务器脚本发的版本，拿本地 `out/` 跑 `make verify`
+   比对指纹必失败——这是预期（构建器不同），不代表同步故障，需在服务器本地
+   或按路径 200 验证。
+
 ## rsync 语义（重要）
 
 `make upload` 使用 `--delete` 清理旧构建的 hash 资源（Next 每次构建文件名都变，
 不清理会无限累积），但**显式排除**：
 
 - `MP_verify_*.txt` —— 微信业务域名校验文件，删了小程序 web-view 会挂
-- `wLKL4DZ96W.txt` —— 线上受保护文件（域名校验类），**不可删**
+- `wLKL4DZ96W.txt` —— 微信侧域名校验文件（2026-11-02 下发），**不可删**
+- `vjrssHFjy5.txt` —— 抖音侧域名校验文件（2026-11-08 下发），**不可删**
 - `.well-known/` —— 服务器侧可能的 acme 等协议目录
+
+（微信/抖音后台若重新下发校验文件，文件名会变——记得同步改 **Makefile 与
+服务器 deploy 脚本两处** exclude，并更新本清单。）
 
 其余服务器上多出来的文件都会被删——**不要手工往 `html/` 放东西**，
 要放就放进仓库 `public/`（构建时会拷入 `out/` 一起发布）；
@@ -97,7 +131,8 @@ make release（mistsee 仓库，重启生效）
 
 ### 日常
 
-- 测试站出新版：`make release ENV=test`（与正式互不影响，产物目录独立）
+- 测试站出新版：`make release ENV=test`（与正式互不影响，产物目录独立）；
+  服务器本机也可跑 `deploy-test-ziwei`（先 `git pull`，见「服务器侧一键脚本」）
 - 加/减测试用户：只改 mistsee 的 `MISTSEE_GRAY_TEST_UID_LIST` 重启，本仓库不动
 - 测试站**无访问控制**：拿到域名谁都能看，勿放敏感内容/未公开数据
 
