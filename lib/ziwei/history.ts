@@ -26,8 +26,17 @@ export interface LastSession extends LastSessionData {
 
 const LAST_KEY = (kind: 'solo' | 'heming') => `ziwei_last_${kind}`;
 
+/** saveLastSession 落盘后的同页广播（2026-11-08 真机反馈「退出再进才有」的
+ *  修法）：解读流在 /chart 起的 fetch 不随路由切换中断，收尾保存可能发生在
+ *  用户已跳去 /archive 之后——那边 mount 时读的快照已过期。storage 事件只
+ *  跨页签生效，同页只能自己广播，档案页监听它重读「上一次」/重拉云端列表。 */
+export const LAST_SESSION_EVENT = 'ziwei-last-session-changed';
+
 export function saveLastSession(kind: 'solo' | 'heming', data: LastSessionData): void {
-  try { localStorage.setItem(LAST_KEY(kind), JSON.stringify({ ...data, savedAt: Date.now() })); } catch { /* 忽略 */ }
+  try {
+    localStorage.setItem(LAST_KEY(kind), JSON.stringify({ ...data, savedAt: Date.now() }));
+    window.dispatchEvent(new Event(LAST_SESSION_EVENT));
+  } catch { /* 忽略 */ }
 }
 
 export function loadLastSession(kind: 'solo' | 'heming'): LastSession | null {

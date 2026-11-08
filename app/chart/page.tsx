@@ -172,7 +172,14 @@ export default function ChartPage() {
         <div className="chart-toolbar">
           <button
             type="button"
-            onClick={() => { setChart(null); setSelectedPalace(null); }}
+            onClick={() => {
+              setChart(null);
+              setSelectedPalace(null);
+              // 刚问完的盘此刻已在本地「上一次」里（每轮收尾 saveLastSession），
+              // 但 lastSolo 是 mount 快照——回表单前重读，「回到上次」即时出现
+              //（2026-11-08 真机反馈：以前要退出重进才有）
+              setLastSolo(loadLastSession('solo'));
+            }}
             className="chart-reset-btn"
           >
             ← 重新起盘

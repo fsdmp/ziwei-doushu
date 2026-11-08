@@ -1,10 +1,11 @@
 'use client';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { requestJSON } from '@/lib/ai';
 import { openPaySheet } from '@/lib/mini-bridge';
 import { refreshMember, isMember, touchSession } from '@/lib/unlock';
-import { loadLastSession, type LastSession } from '@/lib/ziwei/history';
+import { loadLastSession, LAST_SESSION_EVENT, type LastSession } from '@/lib/ziwei/history';
+import { archiveQDisplay } from '@/lib/ziwei/q-label';
 import ChartBoard from '@/components/ChartBoard';
 import type { ZiweiChart } from '@/lib/ziwei/types';
 
@@ -41,6 +42,16 @@ interface ArchiveDetail {
  *  最近 1 条，取 savedAt 较新者展示。chart 缺失的脏数据视为无记录。 */
 type LastPick = { kind: 'solo' | 'heming'; data: LastSession };
 
+/** 读本地「上一次」快照（mount 与 LAST_SESSION_EVENT 重读共用一份口径）。 */
+function pickLastSession(): LastPick | null {
+  const cands: LastPick[] = [];
+  for (const kind of ['solo', 'heming'] as const) {
+    const last = loadLastSession(kind);
+    if (last?.chart) cands.push({ kind, data: last });
+  }
+  return cands.length ? cands.reduce((a, b) => (b.data.savedAt > a.data.savedAt ? b : a)) : null;
+}
+
 export default function ArchivePage() {
   const router = useRouter();
   const [member, setMember] = useState<boolean | null>(null); // null=加载中
@@ -54,14 +65,7 @@ export default function ArchivePage() {
   // 非会员「回看上一次」：mounted 后再读 localStorage——渲染期读会与预渲染
   // HTML 不一致触发 hydration 回退（/chart 同款处理，不新增 mismatch 源）
   const [lastPick, setLastPick] = useState<LastPick | null>(null);
-  useEffect(() => {
-    const cands: LastPick[] = [];
-    for (const kind of ['solo', 'heming'] as const) {
-      const last = loadLastSession(kind);
-      if (last?.chart) cands.push({ kind, data: last });
-    }
-    setLastPick(cands.length ? cands.reduce((a, b) => (b.data.savedAt > a.data.savedAt ? b : a)) : null);
-  }, []);
+  useEffect(() => { setLastPick(pickLastSession()); }, []);
 
   const fetchList = useCallback(async () => {
     try {
@@ -69,6 +73,7 @@ export default function ArchivePage() {
         `/api/v1/ziwei/archive?page=1`, 'GET');
       setItems(d.items || []);
       setMore(d.more);
+      setPage(1); // 重拉即回第一页（事件触发的后台刷新可能打断翻页态）
     } catch {
       setErr('档案读取失败，稍后再试');
     }
@@ -107,6 +112,29 @@ export default function ArchivePage() {
       }
     })();
   }, [fetchList, importLocal]);
+
+  // 别处的解读流收尾（2026-11-08 真机反馈「刚起的盘退出再进才有」）：流在
+  // /chart 起的 fetch 不随路由切换中断，用户常在解读还在生成时就点进档案页
+  // ——mount 快照（本地「上一次」/云端列表）此刻都没有这轮问答。收尾保存的
+  // LAST_SESSION_EVENT 到点：重读「上一次」；会员的云端档案行由服务端在同一
+  // 刻异步落库，等一拍再重拉列表。多轮连发用尾沿防抖合并成一次。
+  const refetchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    const onSaved = () => {
+      setLastPick(pickLastSession());
+      if (member !== true) return;
+      if (refetchTimer.current) clearTimeout(refetchTimer.current);
+      refetchTimer.current = setTimeout(() => {
+        refetchTimer.current = null;
+        fetchList();
+      }, 600);
+    };
+    window.addEventListener(LAST_SESSION_EVENT, onSaved);
+    return () => {
+      window.removeEventListener(LAST_SESSION_EVENT, onSaved);
+      if (refetchTimer.current) { clearTimeout(refetchTimer.current); refetchTimer.current = null; }
+    };
+  }, [member, fetchList]);
 
   const loadMore = useCallback(async () => {
     if (loading || !more) return;
@@ -163,8 +191,13 @@ export default function ArchivePage() {
       } else {
         sessionStorage.setItem('ziwei_archive_restore', JSON.stringify({
           chart: d.chart_a,
+          // 页内注入的结构化指令（主题/选宫/四化）按 hidden 恢复——不渲染用户
+          // 气泡（2026-11-08 真机反馈：续问后对话里把指令原文显示出来了），
+          // 但 content 原样带回：下一轮全量回传时上下文不缺（hidden 是纯前端
+          // 展示概念，见 InsightPanel 对 roundMessages 的处理）
           messages: d.msgs.flatMap(m => [
-            { role: 'user' as const, content: m.question || '（默认综合解读）' },
+            { role: 'user' as const, content: m.question || '（默认综合解读）',
+              hidden: m.question ? archiveQDisplay(m.question).auto || undefined : undefined },
             { role: 'assistant' as const, content: m.answer },
           ]),
         }));
@@ -314,13 +347,13 @@ export default function ArchivePage() {
           <div className="flex flex-col" style={{ gap: 10 }}>
             {items.map(it => (
               <div key={it.id} style={{ ...cardStyle, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
-                <button onClick={() => openDetail(it.id)} style={{ flex: 1, textAlign: 'left', background: 'transparent', border: 'none', padding: 0, color: 'inherit', cursor: 'pointer' }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
+                <button onClick={() => openDetail(it.id)} style={{ flex: 1, minWidth: 0, textAlign: 'left', background: 'transparent', border: 'none', padding: 0, color: 'inherit', cursor: 'pointer' }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                     {it.kind === 'heming' ? '♡ 合盘' : '✦ 命盘'}
                     <span style={{ fontSize: 11, color: 'var(--t-faint, #999)', fontWeight: 400 }}>{it.label}</span>
                   </div>
                   <div style={{ fontSize: 12, color: 'var(--t-faint, #999)', marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {it.last_q ? `最近一问：${it.last_q}` : '暂无解读'}
+                    {it.last_q ? `最近一问：${archiveQDisplay(it.last_q).label}` : '暂无解读'}
                   </div>
                   <div style={{ fontSize: 11, color: 'var(--t-faint, #aaa)', marginTop: 2 }}>
                     {new Date(it.asked_at).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
@@ -390,7 +423,9 @@ export default function ArchivePage() {
               <div style={{ fontSize: 12, color: 'var(--t-faint, #999)', marginBottom: 6 }}>
                 {new Date(m.created_at).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
               </div>
-              <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>问：{m.question || '（默认综合解读）'}</div>
+              <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>
+                问：{m.question ? archiveQDisplay(m.question).label : '（默认综合解读）'}
+              </div>
               <div style={{ fontSize: 12.5, lineHeight: 1.85, whiteSpace: 'pre-wrap', color: 'var(--t-text, #ccc)' }}>{m.answer}</div>
             </div>
           ))}
