@@ -46,6 +46,13 @@ export function loadLastSession(kind: 'solo' | 'heming'): LastSession | null {
   } catch { return null; }
 }
 
+/** 清掉某类的本地「上一次」。云端档案删除时对同 sessionId 的一条一并清：
+ *  否则下次进档案页 importLocal 幂等查无（行刚被删）→ 从本地复活再存入
+ *  （2026-11-08 真机反馈「删了又自动存回来」）。 */
+export function clearLastSession(kind: 'solo' | 'heming'): void {
+  try { localStorage.removeItem(LAST_KEY(kind)); } catch { /* 忽略 */ }
+}
+
 export function lastSessionLabel(kind: 'solo' | 'heming'): string | null {
   return loadLastSession(kind) ? '回到上次' : null;
 }

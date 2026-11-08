@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 import { requestJSON } from '@/lib/ai';
 import { openPaySheet } from '@/lib/mini-bridge';
 import { refreshMember, isMember, touchSession } from '@/lib/unlock';
-import { loadLastSession, LAST_SESSION_EVENT, type LastSession } from '@/lib/ziwei/history';
+import { loadLastSession, clearLastSession, LAST_SESSION_EVENT, type LastSession } from '@/lib/ziwei/history';
 import { archiveQDisplay } from '@/lib/ziwei/q-label';
 import ChartBoard from '@/components/ChartBoard';
 import AiContent from '@/components/AiContent';
@@ -21,6 +21,7 @@ import type { ZiweiChart } from '@/lib/ziwei/types';
 
 interface ArchiveItem {
   id: number;
+  session_id: string;
   kind: 'solo' | 'heming';
   label: string;
   asked_at: string;
@@ -162,12 +163,26 @@ export default function ArchivePage() {
     }
   }, []);
 
-  const removeItem = useCallback(async (id: number) => {
-    if (!confirm('删除这份档案？删除后无法找回。')) return;
+  // 删除确认用页内弹窗而非 window.confirm：web-view 里原生 confirm 被宿主
+  // 接管渲染，取消侧有时是「关闭网页」（2026-11-08 真机反馈）——弹窗形态
+  // 不可控还可能直接关掉 H5
+  const [confirmDel, setConfirmDel] = useState<ArchiveItem | null>(null);
+  const removeItem = useCallback(async (it: ArchiveItem) => {
     try {
-      await requestJSON(`/api/v1/ziwei/archive/${id}`, 'DELETE');
-      setItems(prev => prev.filter(i => i.id !== id));
-      if (detail?.id === id) setDetail(null);
+      await requestJSON(`/api/v1/ziwei/archive/${it.id}`, 'DELETE');
+      setItems(prev => prev.filter(i => i.id !== it.id));
+      if (detail?.id === it.id) setDetail(null);
+      // 同盘的本地「上一次」一并清（防复活）：importLocal 的幂等键 (uid,
+      // session_id) 查无刚删的行会把本地最近一条重新存入云端（2026-11-08
+      // 真机反馈「删了又自动存回来」）。清掉后「回到上次」同步消失——
+      // 「删除后无法找回」对本机全量成立，跨设备的本地副本各自为准
+      for (const kind of ['solo', 'heming'] as const) {
+        const last = loadLastSession(kind);
+        if ((last?.chart as ZiweiChart | undefined)?.sessionId === it.session_id) {
+          clearLastSession(kind);
+        }
+      }
+      setLastPick(pickLastSession());
     } catch { /* 静默 */ }
   }, [detail]);
 
@@ -362,7 +377,7 @@ export default function ArchivePage() {
                   </div>
                 </button>
                 <button
-                  onClick={() => removeItem(it.id)}
+                  onClick={() => setConfirmDel(it)}
                   style={{ background: 'transparent', border: 'none', color: 'var(--t-faint, #888)', fontSize: 11, cursor: 'pointer', padding: 4 }}
                   aria-label="删除"
                 >
@@ -433,6 +448,41 @@ export default function ArchivePage() {
             </div>
           ))}
         </>
+      )}
+      {/* 删除确认（页内弹窗，替代 window.confirm——web-view 里原生 confirm 被
+          宿主接管，取消侧有时渲染成「关闭网页」） */}
+      {confirmDel && (
+        <div
+          onClick={() => setConfirmDel(null)}
+          style={{ position: 'fixed', inset: 0, zIndex: 80, background: 'rgba(0,0,0,0.55)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{ ...cardStyle, width: '100%', maxWidth: 320, padding: '22px 20px', textAlign: 'center' }}
+          >
+            <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 6 }}>删除这份档案？</div>
+            <div style={{ fontSize: 12, color: 'var(--t-faint, #999)', marginBottom: 18 }}>删除后无法找回</div>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button
+                onClick={() => setConfirmDel(null)}
+                className="flex-1 py-2 rounded-xl"
+                style={{ fontSize: 13, cursor: 'pointer', background: 'transparent',
+                  border: '1px solid var(--t-border, rgba(255,255,255,0.15))', color: 'inherit' }}
+              >
+                取消
+              </button>
+              <button
+                onClick={() => { const it = confirmDel; setConfirmDel(null); removeItem(it); }}
+                className="flex-1 py-2 rounded-xl"
+                style={{ fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                  background: 'rgba(204,68,68,0.16)', border: '1px solid rgba(204,68,68,0.45)', color: '#e08585' }}
+              >
+                删除
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </main>
   );
