@@ -9,17 +9,26 @@ export interface BirthInfo {
   city?: string;       // 出生城市
   longitude?: number;  // 出生地经度（用于真太阳时校正）
   /**
-   * 原始输入（用户在表单里实际填的时间），已知出生时间时始终保留。
-   * 例：用户输入 5/9 23:55 → year/month/day 会被改成 5/10（次日子时），
-   *     而这里保存原始的 { year:Y, month:5, day:9, clockHour:23, clockMinute:55 }，
-   *     用于在 chart 页让用户看见"已为你按子时换日规则归到次日"。
+   * 原始输入（用户在表单里实际填的时间，农历→公历换算与晚子时换日之前的
+   * 用户原话），始终留存。两个用途：
+   * · 恢复表单 round-trip（档案续问/合盘邀请）：历法选择、闰月、原始年月日
+   *   与时辰从原话还原，而非展示换算值
+   * · 云端档案标签按起盘所选历法显示：农历 orig → "农历1990年闰5月14日"，
+   *   公历 orig → "1990年5月14日"（server 端拼 label）
+   * 例：用户农历输入 5/9 23:55 → year/month/day 是换算+换日后的公历排盘日，
+   *     这里保存 { year, month, day, calendar:'lunar', lunarLeap, clockHour:23, clockMinute:55 }。
+   * clockHour/clockMinute 时辰不详（unknownTime）时缺省——它俩缺省与否就是
+   * 恢复时 unknownTime 的判定信号；整个 origInput 缺省 = 老 chart JSON，
+   * 恢复按公历 + 时辰不详退化（历史口径）。
    */
   origInput?: {
     year: number;
     month: number;
     day: number;
-    clockHour: number;
-    clockMinute: number;
+    calendar: 'solar' | 'lunar';
+    lunarLeap: boolean;
+    clockHour?: number;
+    clockMinute?: number;
   };
 }
 

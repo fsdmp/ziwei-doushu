@@ -7,7 +7,7 @@
  */
 import assert from 'node:assert/strict';
 import { lunarToSolar, lunarMonthDayCount, leapMonthOfLunarYear } from '../../lib/ziwei/lunar-solar';
-import { formToBirthInfo, formToSearchParams, searchParamsToForm } from '../../lib/ziwei/share';
+import { formToBirthInfo, formFromBirthInfo, formToSearchParams, searchParamsToForm } from '../../lib/ziwei/share';
 import type { BirthFormState } from '../../components/BirthForm';
 
 function makeForm(over: Partial<BirthFormState>): BirthFormState {
@@ -110,5 +110,54 @@ assert.equal(solarParams.get('cal'), null);
 const restoredSolar = searchParamsToForm(solarParams)!;
 assert.equal(restoredSolar.calendar, 'solar');
 assert.equal(restoredSolar.lunarLeap, false);
+
+// ── 6. birthInfo round-trip：origInput 保留历法/闰月/原话 ──
+// 农历闰四月 15 日 23:55（晚子时换日）：birthInfo 是换算+换日后公历，
+// origInput 是用户原话——档案标签按 origInput 显示"农历2020年闰4月15日"
+const lunarZi = formToBirthInfo(makeForm({
+  calendar: 'lunar', year: '2020', month: '4', day: '15', lunarLeap: true,
+  clockHour: '23', clockMinute: '55',
+}))!;
+assert.equal(lunarZi.origInput?.calendar, 'lunar');
+assert.equal(lunarZi.origInput?.lunarLeap, true);
+assert.deepEqual(
+  { year: lunarZi.origInput?.year, month: lunarZi.origInput?.month, day: lunarZi.origInput?.day },
+  { year: 2020, month: 4, day: 15 },
+  'origInput 应是换算/换日前的原话日期',
+);
+const backZi = formFromBirthInfo(lunarZi);
+assert.equal(backZi.calendar, 'lunar');
+assert.equal(backZi.lunarLeap, true);
+assert.equal(backZi.year, '2020');
+assert.equal(backZi.month, '4');
+assert.equal(backZi.day, '15');
+assert.equal(backZi.clockHour, '23');
+assert.equal(backZi.clockMinute, '55');
+assert.equal(backZi.unknownTime, false);
+
+// 公历：origInput.calendar=solar、历法/时辰同样 round-trip
+const solarForm = formToBirthInfo(makeForm({ year: '1990', month: '6', day: '4', clockHour: '8', clockMinute: '0' }))!;
+assert.equal(solarForm.origInput?.calendar, 'solar');
+const backSolar = formFromBirthInfo(solarForm);
+assert.equal(backSolar.calendar, 'solar');
+assert.equal(backSolar.unknownTime, false);
+assert.equal(backSolar.day, '4');
+
+// 时辰不详：origInput 无 clockHour（恢复的 unknownTime 信号），但历法与原话日期仍在
+const unknownLunar = formToBirthInfo(makeForm({
+  calendar: 'lunar', year: '2020', month: '4', day: '15', lunarLeap: true, unknownTime: true,
+}))!;
+assert.equal(unknownLunar.origInput?.clockHour, undefined);
+const backUnknown = formFromBirthInfo(unknownLunar);
+assert.equal(backUnknown.unknownTime, true);
+assert.equal(backUnknown.calendar, 'lunar');
+assert.equal(backUnknown.lunarLeap, true);
+assert.equal(backUnknown.day, '15');
+
+// 老 chart JSON（无 origInput）：公历 + 时辰不详退化（历史口径）
+const legacy = formFromBirthInfo({ year: 1990, month: 6, day: 4, hour: 8, gender: 'male' });
+assert.equal(legacy.calendar, 'solar');
+assert.equal(legacy.unknownTime, true);
+assert.equal(legacy.day, '4');
 
 console.log('lunar input regression passed');

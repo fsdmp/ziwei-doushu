@@ -26,6 +26,19 @@ export function formToBirthInfo(form: BirthFormState): BirthInfo | null {
   let m = parseInt(form.month) || 0;
   let d = parseInt(form.day) || 0;
 
+  // 原始输入快照：必须在换算/换日改写 y/m/d 之前抓取——历法、闰月、
+  // 用户原话年月日与时辰是否详尽都留在这里（档案标签按所选历法显示、
+  // 恢复表单 round-trip 的唯一原料）
+  const orig: NonNullable<BirthInfo['origInput']> = {
+    year: y, month: m, day: d,
+    calendar: form.calendar,
+    lunarLeap: form.calendar === 'lunar' && form.lunarLeap,
+  };
+  if (!form.unknownTime) {
+    orig.clockHour = parseInt(form.clockHour) || 0;
+    orig.clockMinute = parseInt(form.clockMinute) || 0;
+  }
+
   if (form.calendar === 'lunar') {
     const solar = lunarToSolar(y, m, d, form.lunarLeap);
     if (!solar) return null;
@@ -54,25 +67,28 @@ export function formToBirthInfo(form: BirthFormState): BirthInfo | null {
     province: form.province || undefined,
     city: form.city || undefined,
     longitude: form.province ? form.longitude : undefined,
+    origInput: orig,
   };
 }
 
 /** BirthInfo → BirthFormState（formToBirthInfo 的反向换算）：盘 JSON 的生辰
  *  换回表单态——档案续问恢复（chart/heming 页）后合盘邀请/分享卡的生辰原料。
- *  origInput 优先（子时换日换算前的用户原话）；缺它 = 时辰不详起盘，
- *  unknownTime 置位（邀请按钮对 unknownTime 同样放行）。 */
+ *  origInput 优先（换算/换日前的用户原话）：历法、闰月、原始年月日与时辰都
+ *  从原话还原；clockHour 缺省 = 时辰不详（unknownTime 置位，邀请按钮对
+ *  unknownTime 同样放行）；整个 origInput 缺省 = 老 chart JSON，按公历 +
+ *  时辰不详退化（历史口径）。 */
 export function formFromBirthInfo(b: BirthInfo): BirthFormState {
   const o = b.origInput;
   return {
     name: b.name ?? '',
-    calendar: 'solar',
+    calendar: o?.calendar === 'lunar' ? 'lunar' : 'solar',
     year: String(o?.year ?? b.year),
     month: String(o?.month ?? b.month),
     day: String(o?.day ?? b.day),
-    lunarLeap: false,
-    clockHour: o ? String(o.clockHour) : '',
-    clockMinute: o ? String(o.clockMinute) : '',
-    unknownTime: !o,
+    lunarLeap: o?.calendar === 'lunar' && !!o.lunarLeap,
+    clockHour: o?.clockHour !== undefined ? String(o.clockHour) : '',
+    clockMinute: o?.clockMinute !== undefined ? String(o.clockMinute) : '',
+    unknownTime: o?.clockHour === undefined,
     province: b.province ?? '',
     city: b.city ?? '',
     longitude: b.longitude ?? 120,
