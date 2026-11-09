@@ -176,7 +176,10 @@ export default function MyHemingInvites({ label = '☯ 我的合盘邀请', clas
                     ☯ 我的合盘邀请
                   </div>
                   <div style={{ fontSize: '11px', color: 'var(--tx-3)', marginTop: '2px' }}>
-                    在途 {pendingN}/{maxPending} · 每张 7 天有效
+                    在途 {pendingN}/{maxPending} · 邀请 7 天有效
+                    {isMemberCap
+                      ? ' · 合盘已存云端档案，永久回看'
+                      : ' · 开通会员合盘永久存云端档案'}
                   </div>
                 </div>
                 <button
