@@ -20,6 +20,9 @@ interface ChartBoardProps {
   onStarSelect?: (star: Star, palace: Palace) => void;
   onPalaceSelect?: (palace: Palace) => void;
   onSiHuaClick?: (starName: string, siHua: string, view: TimeView) => void;
+  /** 入场动画直通：只读回看场景（云端档案详情双盘同屏）关掉 stagger——
+      24 宫 ×2 盘的错峰入场在 web-view 里首帧卡顿明显，动画留给起盘页 */
+  instant?: boolean;
 }
 
 const BRANCH_GRID_POS: Record<number, [number, number]> = {
@@ -61,7 +64,7 @@ function getSanFangSiZheng(branch: number): [number, number, number, number] {
 
 const ANIMATION_ORDER = [5, 6, 7, 8, 9, 10, 11, 0, 1, 2, 3, 4];
 
-export default function ChartBoard({ chart, onStarSelect, onPalaceSelect, onSiHuaClick }: ChartBoardProps) {
+export default function ChartBoard({ chart, onStarSelect, onPalaceSelect, onSiHuaClick, instant }: ChartBoardProps) {
   const [selectedBranch, setSelectedBranch] = useState<number | null>(null);
   const [timeView, setTimeView] = useState<TimeView>('mingpan');
   const [liunianYear, setLiunianYear] = useState<number>(new Date().getFullYear());
@@ -339,7 +342,7 @@ export default function ChartBoard({ chart, onStarSelect, onPalaceSelect, onSiHu
                 onStarClick={(star) => onStarSelect?.(star, palace)}
                 isSelected={selectedBranch === branch}
                 isSanFang={!!(sanFangSet?.has(branch) && selectedBranch !== branch)}
-                delay={i * 0.04}
+                delay={instant ? 0 : i * 0.04}
                 overlayStarSiHua={Object.keys(overlayData).length > 0 ? overlayData : undefined}
                 overlayLabel={overlayLabel}
                 onSiHuaClick={(starName, siHua) => onSiHuaClick?.(starName, siHua, timeView)}
@@ -352,7 +355,7 @@ export default function ChartBoard({ chart, onStarSelect, onPalaceSelect, onSiHu
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
-          transition={{ delay: 0.5 }}
+          transition={{ delay: instant ? 0 : 0.5 }}
           className="palace-center-tile flex flex-col items-center justify-center p-4 gap-3"
           style={{ gridRow: '2 / 4', gridColumn: '2 / 4', background: 'var(--t-bg)', minWidth: 0 }}
         >
@@ -468,7 +471,7 @@ export default function ChartBoard({ chart, onStarSelect, onPalaceSelect, onSiHu
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
-        transition={{ delay: 0.7 }}
+        transition={{ delay: instant ? 0 : 0.7 }}
         className="mt-3 flex items-center justify-center gap-2 text-[9px] flex-wrap"
       >
         {[

@@ -17,7 +17,12 @@ export interface LastSessionData {
   form?: BirthFormState;        // solo 生辰（重起盘表单预填用）
   formA?: BirthFormState;       // heming 双方生辰
   formB?: BirthFormState;
-  analysis?: string;            // heming 的解读全文
+  /** heming 的解读全文（兼容字段：老数据只有它；新数据取 rounds[0] 或末轮） */
+  analysis?: string;
+  /** heming 全部轮次（2026-11-09 真机反馈「追问不带历史」的修法配套）：合盘
+   *  追问从此带上下文，会话是多轮的——本地「上一次」/档案恢复按轮次还原，
+   *  analysis 留作老数据回退（rounds 缺省时包装成单轮） */
+  rounds?: { q: string; a: string }[];
 }
 
 export interface LastSession extends LastSessionData {

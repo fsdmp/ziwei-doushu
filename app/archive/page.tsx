@@ -61,6 +61,7 @@ export default function ArchivePage() {
   const [page, setPage] = useState(1);
   const [more, setMore] = useState(false);
   const [detail, setDetail] = useState<ArchiveDetail | null>(null);
+  const [openingId, setOpeningId] = useState<number | null>(null); // 点击的卡片取详情中（慢网下给点击以反馈）
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState('');
   const [justImported, setJustImported] = useState(false);
@@ -83,18 +84,31 @@ export default function ArchivePage() {
 
   // 开通导入（docs/10 §0.6）：会员进档案页时把本地最近一条会话静默存入云端
   //（已导入过服务端幂等跳过）——开通瞬间柜子不空。失败静默（下次再试）。
+  // heming 本地会话没有 messages、只有轮次/全文——此前恒传空数组，云端合盘行
+  // 一条解读都没有（详情只见双盘「暂无解读」，2026-11-09 真机反馈）：rounds
+  // 逐轮还原成 user/assistant 对（q 空缺不发 user 消息，服务端 pairs 让 assistant
+  // 配空 pending → 详情渲染「默认综合解读」）；老数据无 rounds 时 analysis 全文
+  // 作为单条 assistant 兜底
   const importLocal = useCallback(async () => {
     let importedAny = false;
     for (const kind of ['solo', 'heming'] as const) {
       const last = loadLastSession(kind);
       const chart = last?.chart as ZiweiChart | undefined;
       if (!chart?.sessionId) continue; // 老数据无会话 id，无物可导
+      const messages = kind === 'heming'
+        ? (last?.rounds?.length
+          ? last.rounds.flatMap(r => [
+            ...(r.q ? [{ role: 'user' as const, content: r.q }] : []),
+            { role: 'assistant' as const, content: r.a },
+          ])
+          : (last?.analysis ? [{ role: 'assistant' as const, content: last.analysis }] : []))
+        : (last?.messages ?? []).map(m => ({ role: m.role, content: m.content }));
       try {
         const res = await requestJSON<{ imported: boolean }>(
           '/api/v1/ziwei/archive/import', 'POST', {
             chart,
             chartB: kind === 'heming' ? last?.chartB : undefined,
-            messages: (last?.messages ?? []).map(m => ({ role: m.role, content: m.content })),
+            messages,
           });
         if (res.imported) importedAny = true; // 记下继续走：两盘一次进齐，不因 solo 成功就漏 heming
       } catch { /* 静默 */ }
@@ -155,11 +169,17 @@ export default function ArchivePage() {
 
   const openDetail = useCallback(async (id: number) => {
     setErr('');
+    setOpeningId(id);
     try {
       const d = await requestJSON<ArchiveDetail>(`/api/v1/ziwei/archive/${id}`, 'GET');
       setDetail(d);
+      // 详情替换列表后滚动位置归零：原样保持会落在列表页的旧滚动深处
+      //（合盘详情还有两张盘在顶部之上，观感即「点进去不对劲」）
+      window.scrollTo(0, 0);
     } catch {
       setErr('这份档案取不出来了');
+    } finally {
+      setOpeningId(null);
     }
   }, []);
 
@@ -192,18 +212,21 @@ export default function ArchivePage() {
   // 问答计数/流年解锁键（早于窗口的老档案盘恢复即被重锁）。
   // 问答原文一并带回（2026-11-06 真机反馈：只带盘跳过去历史问答没了）：solo
   // 转成 InsightPanel 会话初值（云端流水无 hidden 概念，平铺 user/assistant）；
-  // heming 页是「单次全量分析」模型，取云端最后一轮 answer 当 analysis——与
-  // 本地「回到上次」同语义（那里存的就是最近一次 runAnalysis 的全文）。
+  // heming 页 2026-11-09 起是多轮会话模型（追问带上下文），云端流水逐轮转
+  // rounds 原样恢复——此前只带最后一轮 answer 当 analysis，前几轮问离不开屏
   // 合盘必须回 /heming 恢复双盘（2026-11-06）：走 /chart 会以 solo 口追问，
   // 服务端 upsert 同 session 行把 kind 覆盖成 solo、乙盘数据被清空（降级）。
   // 缺 chart_b 的老 heming 行兜底走 /chart（无乙盘可恢复，与 solo 同路）
   const continueAsk = useCallback((d: ArchiveDetail) => {
     const toHeming = d.kind === 'heming' && d.chart_b;
-    const lastAnswer = d.msgs.length ? d.msgs[d.msgs.length - 1].answer : '';
     try {
       if (toHeming) {
         sessionStorage.setItem('ziwei_archive_restore_heming',
-          JSON.stringify({ chartA: d.chart_a, chartB: d.chart_b, analysis: lastAnswer }));
+          JSON.stringify({
+            chartA: d.chart_a,
+            chartB: d.chart_b,
+            rounds: d.msgs.map(m => ({ q: m.question, a: m.answer })),
+          }));
       } else {
         sessionStorage.setItem('ziwei_archive_restore', JSON.stringify({
           chart: d.chart_a,
@@ -235,10 +258,14 @@ export default function ArchivePage() {
     const toHeming = lastPick.kind === 'heming' && !!lastPick.data.chartB;
     try {
       if (toHeming) {
+        // 轮次优先（新数据带 rounds 全量），analysis 全文兜底包装成单轮
+        const lastRounds = lastPick.data.rounds?.length
+          ? lastPick.data.rounds
+          : (lastPick.data.analysis ? [{ q: '', a: lastPick.data.analysis }] : []);
         sessionStorage.setItem('ziwei_archive_restore_heming', JSON.stringify({
           chartA: lastPick.data.chart,
           chartB: lastPick.data.chartB,
-          analysis: lastPick.data.analysis ?? '',
+          rounds: lastRounds,
         }));
       } else {
         sessionStorage.setItem('ziwei_archive_restore', JSON.stringify({
@@ -372,8 +399,10 @@ export default function ArchivePage() {
                     {it.last_q ? `最近一问：${archiveQDisplay(it.last_q).label}` : '暂无解读'}
                   </div>
                   <div style={{ fontSize: 11, color: 'var(--t-faint, #aaa)', marginTop: 2 }}>
-                    {new Date(it.asked_at).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                    {' · '}{it.msg_count} 轮解读
+                    {openingId === it.id
+                      ? '读取中…'
+                      : new Date(it.asked_at).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+                        + ' · ' + it.msg_count + ' 轮解读'}
                   </div>
                 </button>
                 <button
@@ -419,18 +448,20 @@ export default function ArchivePage() {
               {detail.kind === 'heming' && detail.chart_b ? '✦ 回到这张合盘继续问' : '✦ 用这张盘继续问'}
             </button>
           </div>
-          {/* 合盘双盘都渲染（2026-11-06）：乙盘一直存着但此前看不见 */}
+          {/* 合盘双盘都渲染（2026-11-06）：乙盘一直存着但此前看不见。instant：
+              档案详情是只读回看，双盘 24 宫入场动画同屏叠跑在 web-view 里首帧
+              卡顿明显——直接落定，动画留给起盘页的高光时刻 */}
           {detail.kind === 'heming' && (
             <div style={{ fontSize: 11, color: 'var(--t-faint, #999)', letterSpacing: '0.2em', marginBottom: 6 }}>甲方之盘</div>
           )}
           <div style={{ ...cardStyle, padding: '10px 12px', marginBottom: 12, overflowX: 'auto' }}>
-            <ChartBoard chart={detail.chart_a} />
+            <ChartBoard chart={detail.chart_a} instant />
           </div>
           {detail.kind === 'heming' && detail.chart_b && (
             <>
               <div style={{ fontSize: 11, color: 'var(--t-faint, #999)', letterSpacing: '0.2em', marginBottom: 6 }}>乙方之盘</div>
               <div style={{ ...cardStyle, padding: '10px 12px', marginBottom: 12, overflowX: 'auto' }}>
-                <ChartBoard chart={detail.chart_b} />
+                <ChartBoard chart={detail.chart_b} instant />
               </div>
             </>
           )}
