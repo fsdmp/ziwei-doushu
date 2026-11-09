@@ -278,7 +278,7 @@ export default function HemingPage() {
         display: 'inline-block', maxWidth: '85%', fontSize: '12px',
         padding: '6px 12px', borderRadius: '12px', textAlign: 'left',
         background: 'rgba(212,168,67,0.08)', border: '1px solid rgba(212,168,67,0.18)',
-        color: 'var(--ac)',
+        color: 'var(--ac-dim)',
       }}>{archiveQDisplay(q).label}</span>
     </div>
   );
@@ -567,11 +567,10 @@ export default function HemingPage() {
                   disabled={analyzing || !question.trim()}
                   style={{
                     padding: '10px 20px', borderRadius: '10px', border: 'none',
-                    background: analyzing ? 'var(--bg-2)' : 'var(--tx-0)',
-                    color: analyzing ? 'var(--tx-3)' : 'white',
+                    background: analyzing || !question.trim() ? 'var(--bg-2)' : 'var(--tx-0)',
+                    color: analyzing || !question.trim() ? 'var(--tx-2)' : 'white',
                     fontSize: '13px', fontWeight: 500, whiteSpace: 'nowrap',
                     cursor: analyzing || !question.trim() ? 'not-allowed' : 'pointer',
-                    opacity: analyzing || !question.trim() ? 0.5 : 1,
                   }}
                 >
                   {analyzing ? '分析中…' : '追问'}

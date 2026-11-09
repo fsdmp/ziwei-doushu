@@ -547,7 +547,7 @@ export default function InviteClient() {
                           display: 'inline-block', maxWidth: '85%', fontSize: '12px',
                           padding: '6px 12px', borderRadius: '12px', textAlign: 'left',
                           background: 'rgba(212,168,67,0.08)', border: '1px solid rgba(212,168,67,0.18)',
-                          color: 'var(--ac)',
+                          color: 'var(--ac-dim)',
                         }}>{f.q}</span>
                       </div>
                       <AiContent text={f.a} streaming={asking && i === followUps.length - 1} />
@@ -624,11 +624,10 @@ export default function InviteClient() {
                       disabled={asking || !question.trim()}
                       style={{
                         padding: '10px 20px', borderRadius: '10px', border: 'none',
-                        background: asking ? 'var(--bg-2)' : 'var(--tx-0)',
-                        color: asking ? 'var(--tx-3)' : 'white',
+                        background: asking || !question.trim() ? 'var(--bg-2)' : 'var(--tx-0)',
+                        color: asking || !question.trim() ? 'var(--tx-2)' : 'white',
                         fontSize: '13px', fontWeight: 500, whiteSpace: 'nowrap',
-                        cursor: asking ? 'not-allowed' : 'pointer',
-                        opacity: asking || !question.trim() ? 0.5 : 1,
+                        cursor: asking || !question.trim() ? 'not-allowed' : 'pointer',
                       }}
                     >
                       {asking ? '分析中…' : '追问'}
