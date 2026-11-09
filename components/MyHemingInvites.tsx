@@ -269,7 +269,10 @@ export default function MyHemingInvites({ label = '☯ 我的合盘邀请', clas
                   <div style={{ fontSize: '11px', color: 'var(--tx-3)', marginTop: '12px', lineHeight: 1.7 }}>
                     在途最多 {maxPending} 张，满了自动顶掉最早未回应的；列表只保留近 7 天。
                     {isMemberCap
-                      ? <>已回应的合盘可随时回看——会员打开即存入云端档案，永久留存。</>
+                      ? <>已回应的合盘可随时回看——会员打开即存入云端档案，永久留存。<span
+                          onClick={() => { setOpen(false); router.push('/archive'); }}
+                          style={{ color: 'var(--vip)', cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 2, whiteSpace: 'nowrap' }}
+                        >去云端档案查看 ›</span></>
                       : <>免费仅可回看最近一条已回应（24 小时内）；<span
                           onClick={() => openPaySheet('member')}
                           style={{ color: 'var(--vip)', cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 2 }}

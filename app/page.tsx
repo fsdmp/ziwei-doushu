@@ -506,6 +506,16 @@ export default function HomePage() {
         </div>
         <div className="flex items-center gap-1.5 sm:gap-3 flex-shrink-0">
           <ThemeToggle />
+          {/* 我的合盘邀请（2026-11-11 提到首页导航：主页用户反馈找不到区块内入口）：
+              点开服务端列表弹层，非会员也可看（空态引导去发起） */}
+          <MyHemingInvites
+            label="☯ 我的邀请"
+            buttonStyle={{
+              padding: '4px 10px', borderRadius: '999px', fontSize: '11px', flexShrink: 0,
+              border: `1px solid ${c.navBorder}`, color: c.textMuted, background: 'transparent',
+              cursor: 'pointer', letterSpacing: '0.05em',
+            }}
+          />
           <motion.button
             whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
             onClick={() => router.push('/heming')}
