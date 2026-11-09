@@ -147,6 +147,18 @@ make release（mistsee 仓库，重启生效）
 
 > 沿 mistsee 惯例：每次发布在此追加一段（日期 + 版本/commit + 内容 + 验证结果 + 遗留）。
 
+### 2026-11-09 · feat(合盘): 页面重构 + 追问聊天化 + 合盘分享卡 + 追问按钮配色（ENV=test）
+
+- **内容**：commit fa80b61——/heming 对标 invite 视觉重构（720px 单列卡流、命宫对照卡、
+  重新合盘回表单预填）；追问聊天化（发送清空输入、问句金气泡回显、空输入禁发）；
+  合盘专属分享卡 HemingShareCard（ShareModal 加 heming 通道）；真机反馈「追问按钮灰色
+  看不清字」修复：快捷问 chips 两页统一 ac 色系（--ac-bg/--ac-bdr/--ac-dim，双主题对比度
+  达标），InsightPanel 禁用态 opacity 30%→50%。**未推正式站**。
+- **发布**：`make release ENV=test`。首页指纹 `3y705tc4v-41-` 与上版相同（首页共享 chunk
+  未动，`make verify` 证明力不足），按 2026-11-02 农历版同款方法补验：/heming /invite
+  /chart 三页线上与本地 chunk 清单逐一比对全部一致（25/22/25 个）；关键路径 200。
+- **遗留**：正式站发布（`make release`）与小程序提审仍待办（与上版相同）。
+
 ### 2026-11-09 · fix(合盘): 追问带上下文与盘面复用 + 档案导入补解读（ENV=test）
 
 - **内容**：commit 0318b82——合盘追问全量回传历史轮次（配套 mistsee 服务端 v0.1.15
