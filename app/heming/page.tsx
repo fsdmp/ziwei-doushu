@@ -10,10 +10,16 @@ import { streamAI, type AIError } from '@/lib/ai';
 import { formToBirthInfo, formFromBirthInfo } from '@/lib/ziwei/share';
 import { generateChart as buildChart } from '@/lib/ziwei/algorithm';
 import { simpleHeming, type SimpleHeming } from '@/lib/ziwei/heming-simple';
-import { newSessionId, touchSession } from '@/lib/unlock';
+import {
+  newSessionId, touchSession, QNA_FREE_LIMIT,
+  qnaCanAsk, qnaUnlocked, qnaUsed, recordQnaAsk, markQnaUnlocked,
+  unlockBy, unlockByShare, isMember, refreshMember,
+  openAdUnlock, confirmPendingAdUnlock, sharePanelEnabled, fetchUnlockStatus, watchUnlock,
+} from '@/lib/unlock';
 import { reportEventOnce } from '@/lib/events';
 import { saveLastSession, loadLastSession, type LastSession } from '@/lib/ziwei/history';
 import { archiveQDisplay } from '@/lib/ziwei/q-label';
+import { pushShareCard, openSharePanel, openPaySheet, miniToast } from '@/lib/mini-bridge';
 import type { BirthInfo, ZiweiChart } from '@/lib/ziwei/types';
 import { useTheme } from '@/components/ThemeProvider';
 
@@ -121,6 +127,45 @@ export default function HemingPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const analysisRef = useRef<HTMLDivElement>(null);
 
+  // ── 追问墙（2026-11-11 补齐：/heming 与 invite 同接口却从未入桶，是绕开全部
+  //    问答墙的第三条路）。qna_heming 分桶，key=甲盘 sessionId；首轮综合分析
+  //    不烧额度（对齐 solo「总览免费、追问计数」）；墙时问句挂起不丢，任一钥匙
+  //    生效自动续答 ──
+  const [walled, setWalled] = useState(false);
+  const [hasPendingAsk, setHasPendingAsk] = useState(false);
+  const wallRef = useRef<HTMLDivElement | null>(null);
+  const pendingAskRef = useRef<string | null>(null);
+  const askingRef = useRef(false);
+  const walledRef = useRef(false);
+  const stopWatchRef = useRef<(() => void) | null>(null);
+  const resumeRef = useRef<() => void>(() => {});
+  useEffect(() => { askingRef.current = analyzing; }, [analyzing]);
+  useEffect(() => { walledRef.current = walled; }, [walled]);
+
+  // 钥匙回查三通道（InviteClient 同款）：支付回来刷 member 收墙续答、广告看完
+  // 确认记账续答、引导式分享点了「发送给朋友」台账命中续答
+  useEffect(() => {
+    const onShow = () => {
+      refreshMember().then(() => {
+        if (isMember()) { setWalled(false); resumeRef.current(); }
+      });
+      confirmPendingAdUnlock('qna_heming').then(ok => {
+        if (ok) { setWalled(false); resumeRef.current(); }
+      });
+      if (walledRef.current && sessIdRef.current) {
+        fetchUnlockStatus('qna_heming', sessIdRef.current).then(ok => {
+          if (ok) {
+            markQnaUnlocked(sessIdRef.current!);
+            setWalled(false);
+            resumeRef.current();
+          }
+        });
+      }
+    };
+    window.addEventListener('pageshow', onShow);
+    return () => window.removeEventListener('pageshow', onShow);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const hasCharts = !!(chartA && chartB);
   // 起盘后的命宫对照（invite 结果页同款简版，只读展示）——恢复/起盘后都出
   const brief: SimpleHeming | null = useMemo(
@@ -212,9 +257,18 @@ export default function HemingPage() {
         { role: 'user' as const, content: r.q || HEMING_DEFAULT_Q },
         { role: 'assistant' as const, content: r.a },
       ]);
+      // 追问记账：首个流式增量到达才计（失败/空答不烧额度）；首轮综合分析不烧
+      let counted = !q;
       const acc = await streamAI('/api/v1/ziwei/heming',
         { chartA: cA, chartB: cB, question: q ?? undefined, messages: msgs },
-        (_delta, full) => setStream({ q: q ?? '', text: full }));
+        (_delta, full) => {
+          if (!counted) {
+            counted = true;
+            const hk = cA.sessionId;
+            if (hk && !qnaUnlocked(hk)) recordQnaAsk(hk);
+          }
+          setStream({ q: q ?? '', text: full });
+        });
       if (!acc) throw new Error('empty');
       const nextRounds = [...rounds, { q: q ?? '', a: acc }];
       setRounds(nextRounds);
@@ -236,15 +290,67 @@ export default function HemingPage() {
     }
   }, [formA, formB, chartA, chartB, rounds, generateChart]);
 
-  // 追问入口（invite 结果页同款交互）：发送即清空输入框——问题以右对齐金色
-  // 气泡回显在流里（清晰对应「哪句问话出了这份回答」），输入框留旧文字会让人
-  // 以为「还能改刚才那问」（2026-11-09 真机反馈）
+  // 追问入口（invite 结果页同款交互 + 同额度桶）：发送即清空输入框——问题以
+  // 右对齐金色气泡回显在流里。撞墙时问句挂起不丢（解锁自动续答），输入框
+  // 保留原文（InviteClient 同款）
   const askFollowUp = useCallback((text: string) => {
     const q = text.trim();
-    if (!q || analyzing) return;
+    if (!q || askingRef.current) return;
+    const hKey = sessIdRef.current;
+    if (!hKey || !qnaCanAsk(hKey)) {
+      pendingAskRef.current = q;
+      setHasPendingAsk(true);
+      setWalled(true);
+      if (hKey) reportEventOnce('qna_wall', hKey, { asked: qnaUsed(hKey) });
+      requestAnimationFrame(() => wallRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }));
+      return;
+    }
+    // 会员短路生效的合盘落台账 source=member（归因口径与 solo 一致）
+    if (isMember() && !qnaUnlocked(hKey)) unlockBy('qna_heming', hKey, 'member');
     setQuestion('');
     runAnalysis(q);
-  }, [analyzing, runAnalysis]);
+  }, [runAnalysis]);
+
+  // 续答：挂起的问题在钥匙生效后自动重发；流式中不硬插，短间隔重试到空闲
+  const resumePendingAsk = useCallback(() => {
+    const p = pendingAskRef.current;
+    const hKey = sessIdRef.current;
+    if (!p || !hKey || !qnaCanAsk(hKey)) return;
+    if (askingRef.current) {
+      setTimeout(() => resumeRef.current(), 600);
+      return;
+    }
+    pendingAskRef.current = null;
+    setHasPendingAsk(false);
+    setWalled(false);
+    setQuestion('');
+    runAnalysis(p);
+  }, [runAnalysis]);
+  resumeRef.current = resumePendingAsk;
+
+  // 分享解锁（docs/09 §7.4 双形态）：share_panel=true 时点「发送给朋友」才落账
+  //（watchUnlock 回查命中续答）；旧版点即给。合规口径与 solo/invite 一致
+  const shareUnlock = () => {
+    const hKey = sessIdRef.current;
+    if (!hKey) return;
+    const title = '紫微合盘 · 看看你们的缘分';
+    pushShareCard({ title, ch: 'qna' });
+    if (sharePanelEnabled()) {
+      stopWatchRef.current?.();
+      stopWatchRef.current = watchUnlock('qna_heming', hKey, () => {
+        markQnaUnlocked(hKey);
+        setWalled(false);
+        resumeRef.current();
+      });
+      openSharePanel({ title, ch: 'qna', lock: { kind: 'qna_heming', chartKey: hKey } });
+      return;
+    }
+    unlockByShare('qna_heming', hKey);
+    markQnaUnlocked(hKey);
+    setWalled(false);
+    resumeRef.current();
+    miniToast('✦ 已解锁 · 继续追问');
+  };
 
   // 回到表单态重起：清轮次与双盘（表单值保留，BirthForm 以 initialData 重新
   // 挂载即预填恢复的生辰，改哪方都行）；快照一并清，下次按当前表单重建
@@ -257,6 +363,12 @@ export default function HemingPage() {
     formsSnapshotRef.current = '';
     setFormError(null);
     setAnalysisError(false);
+    // 墙与挂起一并清（新会话新额度，墙失义）
+    setWalled(false);
+    setHasPendingAsk(false);
+    pendingAskRef.current = null;
+    stopWatchRef.current?.();
+    stopWatchRef.current = null;
   }, [analyzing]);
 
   const cardStyle = {
@@ -521,6 +633,56 @@ export default function HemingPage() {
                     </div>
                   )}
                   {stream.text && <AiContent text={stream.text} streaming />}
+                </div>
+              )}
+
+              {/* 追问墙（docs/09 §4：免费 N 问后三把钥匙；问句挂起不丢） */}
+              {walled && (
+                <div ref={wallRef} style={{
+                  margin: '14px 0 4px', padding: '14px 16px', borderRadius: '12px',
+                  background: 'var(--vip-bg)', border: '1px solid var(--vip-bdr)',
+                }}>
+                  <p style={{ fontSize: '12px', color: 'var(--tx-1)', lineHeight: 1.8, margin: `0 0 ${hasPendingAsk ? 6 : 12}px` }}>
+                    这次合盘的 {QNA_FREE_LIMIT} 次免费追问已经用完。分享给朋友，<b>这次合盘</b>的追问就不限次数了——
+                    <span style={{ color: 'var(--tx-3)' }}>或开通会员处处不限，或看段光影同样解锁。</span>
+                  </p>
+                  {hasPendingAsk && (
+                    <p style={{ fontSize: '11px', color: 'var(--ac)', opacity: 0.85, margin: '0 0 12px' }}>
+                      ✦ 你刚才的问题已留着，解锁后自动接着解读
+                    </p>
+                  )}
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button onClick={shareUnlock} style={{
+                      flex: 1, padding: '10px', borderRadius: '10px', border: 'none',
+                      background: 'var(--vip-grad)', color: 'white',
+                      fontSize: '12px', fontWeight: 600, letterSpacing: '0.08em', cursor: 'pointer',
+                    }}>
+                      ✦ 分享解锁 · 本次合盘不限次
+                    </button>
+                    <button onClick={() => openPaySheet('member')} style={{
+                      flex: 1, padding: '10px', borderRadius: '10px',
+                      background: 'transparent', border: '1px solid rgba(212,168,67,0.5)',
+                      color: 'var(--ac)', fontSize: '12px', fontWeight: 600,
+                      letterSpacing: '0.08em', cursor: 'pointer',
+                    }}>
+                      ✦ 会员解锁 · 处处不限
+                    </button>
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', marginTop: '10px' }}>
+                    <button
+                      onClick={() => { const hk = sessIdRef.current; if (hk) openAdUnlock('qna_heming', hk); }}
+                      style={{ fontSize: '11px', color: 'var(--tx-3)', background: 'transparent', border: 'none', cursor: 'pointer', padding: '2px 6px', textDecoration: 'underline', textUnderlineOffset: 2 }}
+                    >
+                      或看段光影 · 同样解锁
+                    </button>
+                    <span style={{ color: 'var(--tx-3)', fontSize: 11, alignSelf: 'center' }}>·</span>
+                    <button
+                      onClick={() => { pendingAskRef.current = null; setHasPendingAsk(false); setWalled(false); }}
+                      style={{ fontSize: '11px', color: 'var(--tx-3)', background: 'transparent', border: 'none', cursor: 'pointer', padding: '2px 6px', textDecoration: 'underline', textUnderlineOffset: 2 }}
+                    >
+                      先不问
+                    </button>
+                  </div>
                 </div>
               )}
 
