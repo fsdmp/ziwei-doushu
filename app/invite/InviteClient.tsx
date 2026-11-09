@@ -14,7 +14,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import BirthForm, { type BirthFormState } from '@/components/BirthForm';
 import AiContent from '@/components/AiContent';
-import { streamAI, type AIError } from '@/lib/ai';
+import { streamAI, requestJSON, type AIError } from '@/lib/ai';
 import {
   fetchInviteCard, fetchInviteResult, consumeInvite, payloadToBirth,
   type InviteCard,
@@ -74,6 +74,27 @@ export default function InviteClient() {
   const [analysis, setAnalysis] = useState('');
   const [analyzing, setAnalyzing] = useState(false);
   const [analysisError, setAnalysisError] = useState(false);
+
+  // 会员打开邀请结果即幂等归档（2026-11-11）：sessionId=inv-<token> 确定性——
+  // 同一份合盘在云端档案永远一行，深读的解读随后落同一行。列表只保留近 7 天后，
+  // 这是「会员有档案可看」承诺的落点：没深读过的邀请合盘也有档案。服务端
+  // /archive/import 对已存在的 (uid, session_id) 幂等跳过，失败静默下次再试。
+  // A/B 双视角都归（各自的 uid 各一行）；chart 口径恒 A=发起方（服务器语义）
+  useEffect(() => {
+    if (stage.k !== 'result') return;
+    let alive = true;
+    refreshMember().then(() => {
+      if (!alive || !isMember()) return;
+      const pair = stage.side === 'b'
+        ? { chartA: stage.taChart, chartB: stage.myChart }
+        : { chartA: stage.myChart, chartB: stage.taChart };
+      requestJSON('/api/v1/ziwei/archive/import', 'POST',
+        { chart: pair.chartA, chartB: pair.chartB, messages: [] },
+      ).catch(() => { /* 静默：下次打开再试 */ });
+    }).catch(() => { /* 无网络身份就谈不上会员 */ });
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stage.k]);
 
   // ── 追问（docs/09 §4）：深读后可继续问，吃问答限额但独立分桶（qna_heming，
   //    key=本次合盘会话 id）——与 solo 盘问答各限各的互不影响 ──

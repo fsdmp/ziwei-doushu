@@ -5,6 +5,7 @@ import { motion, useScroll, useTransform, useInView, AnimatePresence } from 'fra
 import StarField from '@/components/StarField';
 import { useTheme, type Theme } from '@/components/ThemeProvider';
 import AnnouncementModal from '@/components/AnnouncementModal';
+import MyHemingInvites from '@/components/MyHemingInvites';
 import { consumeLaunchParams } from '@/lib/launch-params';
 
 // ─── 滚动入场 wrapper ────────────────────────────────────
@@ -1088,18 +1089,32 @@ export default function HomePage() {
                   </span>
                 ))}
               </div>
-              <motion.button
-                whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
-                onClick={() => router.push('/heming')}
-                className="px-10 py-3 font-medium text-sm tracking-widest rounded-full"
-                style={{
-                  background: theme === 'dark' ? 'rgba(255,255,255,0.08)' : 'rgba(140,100,20,0.1)',
-                  border: `1px solid ${c.goldLine}`,
-                  color: c.goldSolid,
-                  cursor: 'pointer',
-                }}>
-                开始合盘分析
-              </motion.button>
+              {/* 双入口一排：主 CTA + 我的合盘邀请（2026-11-11 首页放开——
+                  多有效邀请后回访是常需，列表在服务端，入口不再依赖本机有无码） */}
+              <div className="flex justify-center gap-3 flex-wrap">
+                <motion.button
+                  whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
+                  onClick={() => router.push('/heming')}
+                  className="px-10 py-3 font-medium text-sm tracking-widest rounded-full"
+                  style={{
+                    background: theme === 'dark' ? 'rgba(255,255,255,0.08)' : 'rgba(140,100,20,0.1)',
+                    border: `1px solid ${c.goldLine}`,
+                    color: c.goldSolid,
+                    cursor: 'pointer',
+                  }}>
+                  开始合盘分析
+                </motion.button>
+                <MyHemingInvites
+                  label="☯ 我的合盘邀请"
+                  className="px-10 py-3 font-medium text-sm tracking-widest rounded-full"
+                  buttonStyle={{
+                    background: 'transparent',
+                    border: `1px solid ${c.goldLine}`,
+                    color: c.goldSolid,
+                    borderRadius: '999px',
+                  }}
+                />
+              </div>
             </FadeIn>
           </div>
         </div>

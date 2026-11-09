@@ -49,6 +49,9 @@ export interface InviteIssued {
   token: string;
   /** A 的小程序昵称（服务端代查，H5 拿不到）：拼「{A昵称} 想和你合一张盘」卡面标题 */
   inviter_name: string;
+  /** >0 = 本次签发顶掉了最早未回应的在途码（满员自动腾位，2026-11-11）：
+   *  H5 提示一句，裂变时刻不被上限打断 */
+  evicted: number;
 }
 
 /** A 发起合盘邀请（POST /api/v1/ziwei/invites，JWT）：每次一张新码（多有效邀请，

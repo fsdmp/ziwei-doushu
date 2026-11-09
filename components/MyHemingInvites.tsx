@@ -18,9 +18,10 @@ import { openPaySheet } from '@/lib/mini-bridge';
 import type { AIError } from '@/lib/ai';
 
 interface MyHemingInvitesProps {
-  /** 按钮文案 */
   label?: string;
   className?: string;
+  /** 覆盖触发按钮内联样式（主页导航等异形入口用） */
+  buttonStyle?: React.CSSProperties;
 }
 
 /** 邀请有效期（与服务端 ziweiInviteTTL 同值）：只用于「剩 N 天」展示 */
@@ -29,7 +30,7 @@ const INVITE_TTL_MS = 7 * 24 * 3600 * 1000;
 const fmtTime = (iso: string) =>
   new Date(iso).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 
-export default function MyHemingInvites({ label = '☯ 我的合盘邀请', className = '' }: MyHemingInvitesProps) {
+export default function MyHemingInvites({ label = '☯ 我的合盘邀请', className = '', buttonStyle }: MyHemingInvitesProps) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [list, setList] = useState<MyInvite[] | null>(null); // null = 加载中
@@ -106,8 +107,18 @@ export default function MyHemingInvites({ label = '☯ 我的合盘邀请', clas
     );
   };
 
+  // 锁面文案区分两种原因（服务端 view_locked 是合集）：最新一条超窗 vs 不是
+  // 最近一条（H5 从列表数据取最近已回应，判定口径与服务端一致）
+  const latestConsumed = list
+    ?.filter(m => m.kind === 'heming' && m.status === 'consumed' && m.consumed_at)
+    .reduce<string | null>((acc, m) => (!acc || m.consumed_at! > acc ? m.consumed_at! : acc), null) ?? null;
+
   const subline = (m: MyInvite) => {
-    if (m.status === 'consumed' && m.view_locked) return '免费回看已过（回应后 24 小时）';
+    if (m.status === 'consumed' && m.view_locked) {
+      return m.consumed_at && m.consumed_at === latestConsumed
+        ? '免费回看已过（回应后 24 小时）'
+        : '免费仅可回看最近一条已回应';
+    }
     if (m.status === 'consumed' && m.consumed_at) return `${fmtTime(m.consumed_at)} TA 已回应`;
     if (m.status === 'pending') {
       const left = Math.max(1, Math.ceil((new Date(m.created_at).getTime() + INVITE_TTL_MS - Date.now()) / 86400000));
@@ -127,6 +138,7 @@ export default function MyHemingInvites({ label = '☯ 我的合盘邀请', clas
         type="button"
         onClick={() => setOpen(true)}
         className={`chart-reset-btn ${className}`}
+        style={buttonStyle}
       >
         {label}
       </button>
@@ -194,11 +206,11 @@ export default function MyHemingInvites({ label = '☯ 我的合盘邀请', clas
                 )}
                 {list !== null && list.map(m => (
                   <div key={m.token} style={{ padding: '12px 0', borderBottom: '1px solid var(--bdr)' }}>
+                    {/* 两行结构（2026-11-11 真机反馈「弹窗被文字挤宽」）：首行徽+操作、
+                        次行说明——窄屏最小内容宽度不再把弹窗撑破 */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                       {chip(m)}
-                      <span style={{ flex: 1, minWidth: 0, fontSize: '12px', color: 'var(--tx-2)' }}>
-                        {subline(m)}
-                      </span>
+                      <span style={{ flex: 1 }} />
                       {m.status === 'consumed' && !m.view_locked && (
                         <button
                           onClick={() => { setOpen(false); router.push(`/invite?invite=${encodeURIComponent(m.token)}&a=1`); }}
@@ -207,8 +219,8 @@ export default function MyHemingInvites({ label = '☯ 我的合盘邀请', clas
                           查看合盘 ›
                         </button>
                       )}
-                      {/* 超窗锁面（非会员回应后 24h）：会员永久回看——邀请是社交事件
-                          有时效，永久留存是云端档案的会员权益（2026-11-09 划界） */}
+                      {/* 超窗/非最近一条锁面：会员永久回看——邀请是社交事件有时效，
+                          永久留存是云端档案的会员权益 */}
                       {m.status === 'consumed' && m.view_locked && (
                         <button
                           onClick={() => openPaySheet('member')}
@@ -222,6 +234,12 @@ export default function MyHemingInvites({ label = '☯ 我的合盘邀请', clas
                           撤回
                         </button>
                       )}
+                    </div>
+                    <div style={{
+                      marginTop: '6px', fontSize: '12px', color: 'var(--tx-2)',
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    }}>
+                      {subline(m)}
                     </div>
                     {/* 行内撤回确认：撤了对方打开即「已失效」，不可恢复 */}
                     {confirming === m.token && (
@@ -249,13 +267,13 @@ export default function MyHemingInvites({ label = '☯ 我的合盘邀请', clas
                 ))}
                 {list !== null && list.length > 0 && (
                   <div style={{ fontSize: '11px', color: 'var(--tx-3)', marginTop: '12px', lineHeight: 1.7 }}>
-                    最多同时 {maxPending} 张在途邀请；撤回或过期后名额自动腾出。
+                    在途最多 {maxPending} 张，满了自动顶掉最早未回应的；列表只保留近 7 天。
                     {isMemberCap
-                      ? <>已回应的合盘可随时回看。</>
-                      : <>已回应的合盘可免费回看 24 小时；<span
+                      ? <>已回应的合盘可随时回看——会员打开即存入云端档案，永久留存。</>
+                      : <>免费仅可回看最近一条已回应（24 小时内）；<span
                           onClick={() => openPaySheet('member')}
                           style={{ color: 'var(--vip)', cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 2 }}
-                        >开通会员</span>在途提升到 10 张、合盘永久回看。</>}
+                        >开通会员</span>在途提升到 10 张、全部永久回看并存云端档案。</>}
                   </div>
                 )}
               </div>

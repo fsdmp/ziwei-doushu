@@ -11,7 +11,7 @@
 import { useState } from 'react';
 import type { BirthFormState } from '@/components/BirthForm';
 import { createHemingInvite } from '@/lib/invite';
-import { pushShareCard } from '@/lib/mini-bridge';
+import { pushShareCard, miniToast } from '@/lib/mini-bridge';
 import { SITE_URL } from '@/lib/site';
 import ShareModal from './ShareModal';
 import type { AIError } from '@/lib/ai';
@@ -43,6 +43,11 @@ export default function HemingInviteButton({ form, label = '☯ 和 TA 合一张
     try {
       const issued = await createHemingInvite(form);
       const title = `${issued.inviter_name} 想和你合一张盘`;
+      // 满员自动腾位（2026-11-11）：签发成功但顶掉了最早未回应的码，提示一句——
+      // 裂变时刻不被上限打断，也不让被顶的码悄无声息地死掉
+      if ((issued.evicted ?? 0) > 0) {
+        miniToast('最早一条未回应的邀请已失效，名额已腾出');
+      }
       // 广播签发：InviteReturnBanner 立即开始盯回应（不用等下次进站）、「我的合盘
       // 邀请」列表弹层开着时即刻刷新（多有效邀请后列表走服务端 mine，本机不再存码）
       window.dispatchEvent(new CustomEvent('ziwei:invite-issued'));
