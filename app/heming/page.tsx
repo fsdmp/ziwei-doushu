@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 import BirthForm, { type BirthFormState } from '@/components/BirthForm';
 import ShareButton from '@/components/ShareButton';
 import HemingInviteButton from '@/components/HemingInviteButton';
-import MyHemingInviteButton from '@/components/MyHemingInviteButton';
+import MyHemingInvites from '@/components/MyHemingInvites';
 import AiContent from '@/components/AiContent';
 import { streamAI, type AIError } from '@/lib/ai';
 import { formToBirthInfo, formFromBirthInfo } from '@/lib/ziwei/share';
@@ -375,7 +375,7 @@ export default function HemingPage() {
                 display: 'flex', flexDirection: 'column', alignItems: 'stretch', gap: '8px',
               }}>
                 <HemingInviteButton form={formA} />
-                <MyHemingInviteButton />
+                <MyHemingInvites />
                 <p style={{ fontSize: '10px', color: 'var(--tx-3)', lineHeight: 1.6 }}>
                   转发给 TA，对方填好生辰就能看到你们的合盘
                 </p>

@@ -12,7 +12,7 @@
 //    空 JWT 恒空列表，自动不轮询）。
 //
 // 「未看过」记 localStorage（按 token 记，看过/关过就不再弹——回执感一次给足，
-// 不做成每页都追着弹的打扰条；回看走常驻入口 MyHemingInviteButton）。
+// 不做成每页都追着弹的打扰条；回看走常驻入口 MyHemingInvites 列表）。
 // 挂 layout 全局：A 从任意页面进站都能接上回访。
 
 import { useEffect, useState } from 'react';

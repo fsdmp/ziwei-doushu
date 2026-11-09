@@ -5,7 +5,7 @@ import BirthForm, { type BirthFormState } from '@/components/BirthForm';
 import ChartBoard from '@/components/ChartBoard';
 import InsightPanel from '@/components/InsightPanel';
 import HemingInviteButton from '@/components/HemingInviteButton';
-import MyHemingInviteButton from '@/components/MyHemingInviteButton';
+import MyHemingInvites from '@/components/MyHemingInvites';
 import ShareButton, { birthForShare } from '@/components/ShareButton';
 import { pushShareCard } from '@/lib/mini-bridge';
 import { newSessionId } from '@/lib/unlock';
@@ -196,8 +196,8 @@ export default function ChartPage() {
           {/* 合盘邀请常驻入口（docs/09 §3.1：常驻入口收进 ShareButton 同排）：
               生辰在手，发起即存 payload */}
           <HemingInviteButton form={savedForm} label="☯ 合盘" />
-          {/* A 侧回访常驻入口：签发过合盘码才渲染，未回应=等待态/已回应=完整合盘 */}
-          <MyHemingInviteButton label="☯ 我的邀请" />
+          {/* A 侧回访常驻入口：点开看全部合盘邀请（多有效邀请后走服务端列表） */}
+          <MyHemingInvites label="☯ 我的邀请" />
           {/* 云端档案入口（docs/10 §5.2）：非会员也可见，点进引导开会员——
               这个功能自带的转化曝光位；会员紫与工具栏灰按钮拉开层级 */}
           <button
