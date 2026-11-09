@@ -22,7 +22,7 @@ import {
 import { formToBirthInfo } from '@/lib/ziwei/share';
 import { generateChart as buildChart } from '@/lib/ziwei/algorithm';
 import {
-  newSessionId, touchSession, QNA_FREE_LIMIT,
+  touchSession, QNA_FREE_LIMIT,
   qnaCanAsk, qnaUnlocked, qnaUsed, recordQnaAsk, markQnaUnlocked,
   unlockBy, unlockByShare, isMember, refreshMember,
   openAdUnlock, confirmPendingAdUnlock, sharePanelEnabled, fetchUnlockStatus,
@@ -42,9 +42,13 @@ const QUICK_QUESTIONS = [
   '财运是否互补？',
 ];
 
+/** 服务端 errx.CodeInviteViewLocked：非会员回看已回应邀请超出 24h 窗 */
+const INVITE_VIEW_LOCKED = 42903;
+
 type Stage =
   | { k: 'loading' }                                                     // 拉卡面/结果
-  | { k: 'invalid'; reason: string }                                     // 降级：邀请失效（文案区分原因）
+  // 降级：邀请失效（文案区分原因）；locked=非会员回看超窗（42903）——给会员 CTA
+  | { k: 'invalid'; reason: string; locked?: boolean }
   | { k: 'card'; card: InviteCard }                                      // B：卡面 + 填生辰
   // 双盘简版：hostName=邀请人昵称（结果页文案用）；myChart=访客自己的盘（右栏），taChart=对方的盘
   // hKey=合盘会话 id（甲盘 sessionId）：追问限额与解锁台账的 key（qna_heming 分桶）
@@ -60,6 +64,8 @@ export default function InviteClient() {
   const isHost = sp.get('a') === '1'; // A 视角（回访提示条进入）
 
   const [stage, setStage] = useState<Stage>({ k: 'loading' });
+  // 结果重拉触发器：回看锁面开通会员回来时 +1，落地 effect 依赖它重跑
+  const [reloadKey, setReloadKey] = useState(0);
   const [formB, setFormB] = useState<BirthFormState | null>(null);
   const [consuming, setConsuming] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -137,7 +143,11 @@ export default function InviteClient() {
       } catch (e) {
         if (!alive) return;
         const code = (e as AIError).code;
-        if (isHost && code === 'biz') {
+        if (isHost && code === 'biz' && (e as AIError).bizCode === INVITE_VIEW_LOCKED) {
+          // 非会员回看超窗（回应后 24h）：锁面引导会员永久回看（2026-11-09 与
+          // 云端档案权益划界；服务端判定为准，H5 只负责给出路）
+          setStage({ k: 'invalid', reason: (e as AIError).bizMsg || '这份合盘的免费回看已过', locked: true });
+        } else if (isHost && code === 'biz') {
           // A 查未回应的码（或码已不在）：等待态，给回 heming 页的出路
           setStage({ k: 'invalid', reason: (e as AIError).bizMsg || 'TA 还没有回应' });
         } else if (code === 'network' || code === 'failed' || code === 'rate-limited') {
@@ -150,7 +160,22 @@ export default function InviteClient() {
     })();
     return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token, isHost]);
+  }, [token, isHost, reloadKey]);
+
+  // 回看锁面的回程：bridge 收银台 navigateBack 回 H5（pageshow）刷新会员，
+  // 已开通即重拉结果——「付完直接看」，不让人再手动点一次
+  const lockedRef = useRef(false);
+  useEffect(() => { lockedRef.current = stage.k === 'invalid' && !!stage.locked; }, [stage]);
+  useEffect(() => {
+    const onShow = () => {
+      if (!lockedRef.current) return;
+      refreshMember().then(() => {
+        if (isMember()) setReloadKey(k => k + 1);
+      });
+    };
+    window.addEventListener('pageshow', onShow);
+    return () => window.removeEventListener('pageshow', onShow);
+  }, []);
 
   // ── 双盘简版（A/B 生辰 → 重排双盘 → 本地引擎）──
   // myChart/taChart 按访客视角对位：side='b' 时我是 B（chartB 是我的盘），
@@ -168,8 +193,11 @@ export default function InviteClient() {
       const chartA = buildChart(infoA);
       const chartB = buildChart(infoB);
       // 甲盘（A 的盘）挂起盘会话 id：server interpret_done/档案按甲盘归因；
-      // 裂变来的起盘 from='invite'（docs/11 §1，与 heming 页 'fresh' 区分归因）
-      const sid = newSessionId();
+      // 裂变来的起盘 from='invite'（docs/11 §1，与 heming 页 'fresh' 区分归因）。
+      // 按邀请码确定性派生（2026-11-09）：此前每次进结果页随机新 id，会员每看
+      // 一次深读档案就多一行重复；同一份邀请合盘永远一个会话 id → 档案归并一行、
+      // 起盘事件同码只记一次。'inv-' + 24 位 hex 落在 sessionId 合法字符集内
+      const sid = `inv-${token}`;
       chartA.sessionId = sid;
       reportEventOnce('chart_new', sid, { chart_kind: 'heming', from: 'invite' });
       touchSession(sid);
@@ -364,7 +392,27 @@ export default function InviteClient() {
         )}
 
         {/* ── 降级：邀请失效（不出错误页，给起盘出路）── */}
-        {stage.k === 'invalid' && (
+        {stage.k === 'invalid' && stage.locked && (
+          // 非会员回看超窗锁面（42903）：给会员出路；开通回来 pageshow 自动重拉
+          <div style={{ ...cardStyle, textAlign: 'center', padding: '48px 24px' }}>
+            <div style={{ fontSize: '32px', marginBottom: '16px' }}>🔒</div>
+            <p style={{ fontSize: '15px', color: 'var(--tx-1)', marginBottom: '8px', lineHeight: 1.7 }}>{stage.reason}</p>
+            <p style={{ fontSize: '12px', color: 'var(--tx-3)', marginBottom: '28px', lineHeight: 1.7 }}>
+              会员可永久回看每一份合盘，起盘、合盘、解读都在云端档案里
+            </p>
+            <button
+              onClick={() => openPaySheet('member')}
+              style={{
+                padding: '13px 36px', borderRadius: 'var(--r-pill, 999px)', border: 'none',
+                background: 'var(--vip-grad)', color: 'white', fontSize: '13px', fontWeight: 600,
+                letterSpacing: '0.12em', cursor: 'pointer', boxShadow: '0 4px 12px var(--vip-glow)',
+              }}
+            >
+              开通会员 · 永久回看
+            </button>
+          </div>
+        )}
+        {stage.k === 'invalid' && !stage.locked && (
           <div style={{ ...cardStyle, textAlign: 'center', padding: '48px 24px' }}>
             <div style={{ fontSize: '32px', color: 'var(--ac)', opacity: 0.3, marginBottom: '16px' }}>☯</div>
             <p style={{ fontSize: '15px', color: 'var(--tx-1)', marginBottom: '8px' }}>{stage.reason}</p>

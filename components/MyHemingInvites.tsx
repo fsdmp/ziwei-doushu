@@ -5,14 +5,16 @@
 // 数据源改服务端 GET /invites/mine：触发按钮恒渲染（列表在服务端，不依赖本机
 // 有无码；无 JWT/没发过时空态兜底），点开弹层看全部邀请——
 //   等待回应：剩余天数 + 撤回（腾出在途名额，对方打开即显示失效）
-//   已回应：查看合盘（/invite?a=1，A 视角拉双方生辰本地重排）
+//   已回应：查看合盘（/invite?a=1）；非会员回应后 24h 超窗锁面引导会员永久回看
 //   已失效：过期或已撤回（服务端撤回即置 expired，视图不再细分）
+// 在途上限与超窗判定都以服务端为准（max_pending / view_locked，会员 10 / 非会员 3）。
 // 首页回访横幅（InviteReturnBanner）同走 mine 列表，两处口径一致。
 
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { fetchMyInvites, revokeMyInvite, INVITE_MAX_PENDING, type MyInvite } from '@/lib/invite';
+import { fetchMyInvites, revokeMyInvite, INVITE_MAX_PENDING_FALLBACK, type MyInvite } from '@/lib/invite';
+import { openPaySheet } from '@/lib/mini-bridge';
 import type { AIError } from '@/lib/ai';
 
 interface MyHemingInvitesProps {
@@ -85,6 +87,10 @@ export default function MyHemingInvites({ label = '☯ 我的合盘邀请', clas
   };
 
   const pendingN = list?.filter(m => m.status === 'pending').length ?? 0;
+  // 在途上限以服务端为准（会员 10 / 非会员 3，每行同值）：本地不判会员，
+  // 开通后重开弹层即见新上限
+  const maxPending = list?.[0]?.max_pending ?? INVITE_MAX_PENDING_FALLBACK;
+  const isMemberCap = maxPending > INVITE_MAX_PENDING_FALLBACK;
 
   const chip = (m: MyInvite) => {
     const s = m.status === 'pending'
@@ -101,6 +107,7 @@ export default function MyHemingInvites({ label = '☯ 我的合盘邀请', clas
   };
 
   const subline = (m: MyInvite) => {
+    if (m.status === 'consumed' && m.view_locked) return '免费回看已过（回应后 24 小时）';
     if (m.status === 'consumed' && m.consumed_at) return `${fmtTime(m.consumed_at)} TA 已回应`;
     if (m.status === 'pending') {
       const left = Math.max(1, Math.ceil((new Date(m.created_at).getTime() + INVITE_TTL_MS - Date.now()) / 86400000));
@@ -157,7 +164,7 @@ export default function MyHemingInvites({ label = '☯ 我的合盘邀请', clas
                     ☯ 我的合盘邀请
                   </div>
                   <div style={{ fontSize: '11px', color: 'var(--tx-3)', marginTop: '2px' }}>
-                    在途 {pendingN}/{INVITE_MAX_PENDING} · 每张 7 天有效
+                    在途 {pendingN}/{maxPending} · 每张 7 天有效
                   </div>
                 </div>
                 <button
@@ -192,12 +199,22 @@ export default function MyHemingInvites({ label = '☯ 我的合盘邀请', clas
                       <span style={{ flex: 1, minWidth: 0, fontSize: '12px', color: 'var(--tx-2)' }}>
                         {subline(m)}
                       </span>
-                      {m.status === 'consumed' && (
+                      {m.status === 'consumed' && !m.view_locked && (
                         <button
                           onClick={() => { setOpen(false); router.push(`/invite?invite=${encodeURIComponent(m.token)}&a=1`); }}
                           style={linkBtn('var(--ac-dim)')}
                         >
                           查看合盘 ›
+                        </button>
+                      )}
+                      {/* 超窗锁面（非会员回应后 24h）：会员永久回看——邀请是社交事件
+                          有时效，永久留存是云端档案的会员权益（2026-11-09 划界） */}
+                      {m.status === 'consumed' && m.view_locked && (
+                        <button
+                          onClick={() => openPaySheet('member')}
+                          style={{ ...linkBtn('var(--vip)'), fontWeight: 600 }}
+                        >
+                          🔒 会员永久回看
                         </button>
                       )}
                       {m.status === 'pending' && confirming !== m.token && (
@@ -232,7 +249,13 @@ export default function MyHemingInvites({ label = '☯ 我的合盘邀请', clas
                 ))}
                 {list !== null && list.length > 0 && (
                   <div style={{ fontSize: '11px', color: 'var(--tx-3)', marginTop: '12px', lineHeight: 1.7 }}>
-                    最多同时 {INVITE_MAX_PENDING} 张在途邀请；撤回或过期后名额自动腾出。
+                    最多同时 {maxPending} 张在途邀请；撤回或过期后名额自动腾出。
+                    {isMemberCap
+                      ? <>已回应的合盘可随时回看。</>
+                      : <>已回应的合盘可免费回看 24 小时；<span
+                          onClick={() => openPaySheet('member')}
+                          style={{ color: 'var(--vip)', cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 2 }}
+                        >开通会员</span>在途提升到 10 张、合盘永久回看。</>}
                   </div>
                 )}
               </div>
