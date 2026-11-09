@@ -147,6 +147,16 @@ make release（mistsee 仓库，重启生效）
 
 > 沿 mistsee 惯例：每次发布在此追加一段（日期 + 版本/commit + 内容 + 验证结果 + 遗留）。
 
+### 2026-11-09 · fix(合盘): 追问区剩余低对比度——问句气泡与发送键禁用态（ENV=test）
+
+- **内容**：commit 4fdffec——真机反馈「合盘的追问也看不清」：chips 改 ac 色系后追问区仍有
+  两处低对比——问句回显气泡 `--ac`（亮色 #B8922A 浅金底 ~2.8:1）→ `--ac-dim`；发送键
+  禁用态黑底白字压 opacity 0.5（~2:1）→ 实底 `--bg-2`+`--tx-2`（~7:1）。heming/invite 两页同步。
+- **发布**：`make release ENV=test`。首页指纹仍 `3y705tc4v-41-`（共享 chunk 未动），
+  补验 /heming /invite /chart chunk 清单一致；含 ac-dim 的页面 chunk（0schtl7f1n3x2 /
+  2sg81n54sxhnx）线上 200，确认新版生效。
+- **遗留**：正式站发布与小程序提审待办（与上版相同）。
+
 ### 2026-11-09 · feat(合盘): 页面重构 + 追问聊天化 + 合盘分享卡 + 追问按钮配色（ENV=test）
 
 - **内容**：commit fa80b61——/heming 对标 invite 视觉重构（720px 单列卡流、命宫对照卡、
