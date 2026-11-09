@@ -114,12 +114,16 @@ export default function HemingShareCard({ chartA, chartB }: HemingShareCardProps
           display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px',
         }}>
           <div style={{ fontSize: '22px', color: '#b8922a', fontWeight: 600 }}>×</div>
-          <div style={{ fontSize: '8px', color: '#a89b7c', letterSpacing: '0.2em', writingMode: 'vertical-rl' }}>HEMING</div>
+          {/* 竖排字拆两行平排——html2canvas 不支持 writing-mode，vertical-rl
+              会被画成横排溢出（离屏截图源要迁就截图器，不是浏览器） */}
+          <div style={{ fontSize: '8px', color: '#a89b7c', letterSpacing: '0.15em', textAlign: 'center', lineHeight: 1.5 }}>HE<br />MING</div>
         </div>
         {mingBlock('乙 方 · 命 宫', brief.bMing, brief.bTemper)}
       </div>
 
-      {/* 契合亮点（有才渲染）：金左边条白底，同 solo 卡 highlight 形态 */}
+      {/* 契合亮点（有才渲染）：金左边条白底，同 solo 卡 highlight 形态。
+          截断用 maxHeight+overflow hidden——html2canvas 不渲染 -webkit-line-clamp
+          与 textOverflow ellipsis，靠它们截图时会整段铺出去 */}
       {brief.highlight && (
         <div style={{
           marginTop: '12px',
@@ -133,10 +137,9 @@ export default function HemingShareCard({ chartA, chartB }: HemingShareCardProps
           letterSpacing: '0.04em',
           position: 'relative', zIndex: 1,
           overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          display: '-webkit-box',
-          WebkitLineClamp: 1,
-          WebkitBoxOrient: 'vertical',
+          // border-box（Tailwind preflight 全局）：上下 padding 20 + 一行 21 = 41，恰好一行
+          lineHeight: '21px',
+          maxHeight: '41px',
         }}>
           <span style={{ color: '#8b6a14', fontWeight: 600 }}>契合亮点 · </span>{brief.highlight}
         </div>

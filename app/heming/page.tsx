@@ -524,13 +524,12 @@ export default function HemingPage() {
                 </div>
               )}
 
-              {/* 追问区（首轮分析开始即出现并常驻——流式期间不再卸载） */}
+              {/* 追问区（首轮分析开始即出现并常驻——流式期间不再卸载）。
+                  不放任何裂变入口：邀请在上方对照卡、回访在表单卡（成对出现），
+                  追问区只管追问（2026-11-09 真机反馈「邀请按钮重复/位置怪」） */}
               <div style={{ borderTop: '1px solid var(--bdr)', margin: '18px 0 14px' }} />
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
-                <div style={{ fontSize: '11px', letterSpacing: '0.2em', color: 'var(--tx-3)' }}>
-                  针对此次合盘继续追问
-                </div>
-                <MyHemingInviteButton />
+              <div style={{ fontSize: '11px', letterSpacing: '0.2em', color: 'var(--tx-3)', marginBottom: '12px' }}>
+                针对此次合盘继续追问
               </div>
               <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '4px' }}>
                 {QUICK_QUESTIONS.map(q => (
