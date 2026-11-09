@@ -528,8 +528,8 @@ export default function InviteClient() {
                         style={{
                           fontSize: '12px', padding: '6px 14px',
                           borderRadius: 'var(--r-pill, 999px)',
-                          border: '1px solid var(--bdr-med)',
-                          background: 'transparent', color: 'var(--tx-2)',
+                          border: '1px solid var(--ac-bdr)',
+                          background: 'var(--ac-bg)', color: 'var(--ac-dim)',
                           cursor: asking ? 'not-allowed' : 'pointer',
                           opacity: asking ? 0.5 : 1,
                         }}

@@ -39,6 +39,8 @@ interface ShareButtonProps {
   highlight?: string;
   /** 有 chart 时 ShareModal 内渲染分享卡预览与下载 */
   chart?: ZiweiChart | null;
+  /** 合盘卡：双方命盘在手时渲染 HemingShareCard（与 chart 互斥，合盘入口用） */
+  heming?: { chartA: ZiweiChart; chartB: ZiweiChart } | null;
   birth?: ShareBirth;
   /** 裂变邀请码 / 渠道标记：容器页拼进转发卡落地 query（裂变玩法上线后传入） */
   invite?: string;
@@ -51,7 +53,7 @@ interface ShareButtonProps {
 }
 
 export default function ShareButton({
-  title, highlight, chart = null, birth, invite, ch,
+  title, highlight, chart = null, heming = null, birth, invite, ch,
   shareUrl = SITE_URL, label = '✦ 分享', className = '',
 }: ShareButtonProps) {
   const [open, setOpen] = useState(false);
@@ -88,6 +90,7 @@ export default function ShareButton({
         onClose={() => setOpen(false)}
         shareUrl={shareUrl}
         chart={chart}
+        heming={heming}
         birth={safeBirth}
         highlight={highlight}
         title={title}

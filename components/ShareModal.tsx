@@ -6,6 +6,7 @@ import type { ZiweiChart } from '@/lib/ziwei/types';
 import { isMiniProgram, pushShareCard, openSharePanel } from '@/lib/mini-bridge';
 import { sharePanelEnabled } from '@/lib/unlock';
 import ShareCardCanvas, { captureShareCard, downloadDataURL } from './ShareCardCanvas';
+import HemingShareCard from './HemingShareCard';
 
 /** 出生信息（分享卡绘制用，字符串形态来自 BirthFormState；数字 BirthInfo 由
  *  ShareButton 负责转换）。hour/minute 为空串 = 时辰不详（卡面渲染「时辰不详」，
@@ -29,13 +30,18 @@ interface ShareModalProps {
   /** 裂变参数（容器页拼进转发卡 path 的 query，素材契约见 lib/mini-bridge.ts） */
   invite?: string;
   ch?: string;
+  /** 合盘卡（2026-11-09）：双方命盘在手时渲染 HemingShareCard 离屏卡——此前
+      合盘分享走无 chart 分支，弹窗只剩文字按钮没有任何卡图物料（真机反馈
+      「分享出去的好丑」）。与 chart 互斥：合盘入口不传 chart */
+  heming?: { chartA: ZiweiChart; chartB: ZiweiChart } | null;
   /** 隐藏「复制链接」行（邀请场景传 true）：复制出的 H5 直链在非 web-view 环境会被
    *  门禁拦到 /open-in-mini.html 且 query（邀请码）丢失——承诺一条走不通的通道比不给
    *  更伤。默认 false，普通分享（卡图/命盘链接）行为不变。 */
   hideCopyLink?: boolean;
 }
 
-export default function ShareModal({ open, onClose, shareUrl, chart, birth, highlight, title, invite, ch, hideCopyLink }: ShareModalProps) {
+export default function ShareModal({ open, onClose, shareUrl, chart, birth, highlight, title, invite, ch, heming, hideCopyLink }: ShareModalProps) {
+  const hasCard = !!(chart || heming);
   const [copied, setCopied] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [inMini, setInMini] = useState(false);
@@ -53,9 +59,13 @@ export default function ShareModal({ open, onClose, shareUrl, chart, birth, high
   useEffect(() => { setInWeChat(/MicroMessenger/i.test(navigator.userAgent)) }, []);
 
   // 卡面内容指纹：birth 由父组件每次渲染新建对象，直接进依赖会反复重截
-  const cardKey = chart ? `${chart.sessionId ?? ''}|${JSON.stringify(birth)}|${highlight ?? ''}` : '';
+  const cardKey = chart
+    ? `${chart.sessionId ?? ''}|${JSON.stringify(birth)}|${highlight ?? ''}`
+    : heming
+      ? `heming|${heming.chartA.sessionId ?? ''}|${heming.chartB.sessionId ?? ''}`
+      : '';
   useEffect(() => {
-    if (!open || !chart) { setPreviewURL(null); setGenFailed(false); return; }
+    if (!open || !hasCard) { setPreviewURL(null); setGenFailed(false); return; }
     let cancelled = false;
     // 等离屏卡片挂载排版完再截（同一次提交里挂上，留一帧余量给字体）
     const t = setTimeout(async () => {
@@ -123,7 +133,7 @@ export default function ShareModal({ open, onClose, shareUrl, chart, birth, high
       // 微信（含小程序 web-view）忽略 <a download>：点了毫无反应——改开大图，
       // 长按图片走微信原生「保存图片」菜单
       if (inWeChat) { setViewer(true); return; }
-      downloadDataURL(dataURL, `紫微命盘_${Date.now()}.png`);
+      downloadDataURL(dataURL, `${heming && !chart ? '紫微合盘' : '紫微命盘'}_${Date.now()}.png`);
     } finally {
       setDownloading(false);
     }
@@ -132,10 +142,16 @@ export default function ShareModal({ open, onClose, shareUrl, chart, birth, high
   return (
     <>
     {/* 离屏截图源：原尺寸 680×420 渲染在视口外（不受弹窗宽度约束、不进 flex），
-        html2canvas 按 DOM 绘制不依赖可见性；不能用 opacity:0（会截成透明图） */}
+        html2canvas 按 DOM 绘制不依赖可见性；不能用 opacity:0（会截成透明图）。
+        solo 卡与合盘卡互斥渲染（同一 #share-card id 由 captureShareCard 取用） */}
     {open && chart && (
       <div aria-hidden style={{ position: 'fixed', left: '-10000px', top: 0, pointerEvents: 'none' }}>
         <ShareCardCanvas chart={chart} birth={birth} highlight={highlight} />
+      </div>
+    )}
+    {open && !chart && heming && (
+      <div aria-hidden style={{ position: 'fixed', left: '-10000px', top: 0, pointerEvents: 'none' }}>
+        <HemingShareCard chartA={heming.chartA} chartB={heming.chartB} />
       </div>
     )}
     <AnimatePresence>
@@ -170,7 +186,7 @@ export default function ShareModal({ open, onClose, shareUrl, chart, birth, high
               display: 'flex', alignItems: 'center', justifyContent: 'space-between',
             }}>
               <div style={{ fontSize: '14px', fontWeight: 600, color: '#3d2f10', letterSpacing: '0.12em' }}>
-                ✦ 分享命盘
+                {heming && !chart ? '✦ 分享合盘' : '✦ 分享命盘'}
               </div>
               <button onClick={close}
                 style={{
@@ -181,9 +197,9 @@ export default function ShareModal({ open, onClose, shareUrl, chart, birth, high
               >×</button>
             </div>
 
-            {/* 卡片图预览（实际渲染）；无盘面素材（合盘等标题型分享）时整块不出，
+            {/* 卡片图预览（实际渲染）；无盘面素材（标题型分享）时整块不出，
                 下载按钮同理隐藏——没有卡可下 */}
-            {chart ? (
+            {hasCard ? (
               <>
                 <div style={{ padding: '16px', background: '#fbf6e8' }}>
                   {previewURL ? (
@@ -239,7 +255,7 @@ export default function ShareModal({ open, onClose, shareUrl, chart, birth, high
                   )}
                 </>
               )}
-              {chart && (
+              {hasCard && (
                 <button onClick={downloadImage} disabled={downloading}
                   style={{
                     padding: '14px', borderRadius: '10px', border: 'none',
@@ -278,8 +294,8 @@ export default function ShareModal({ open, onClose, shareUrl, chart, birth, high
                 ) : !hideCopyLink ? (
                   <>· 复制链接发给微信好友，对方点开看自己的盘起点<br /></>
                 ) : null}
-                {/* 有卡图才有下载入口（chart=null 的标题型分享没这条能力，提示不提） */}
-                {chart && (inWeChat
+                {/* 有卡图才有下载入口（标题型分享没这条能力，提示不提） */}
+                {hasCard && (inWeChat
                   ? <>· 长按分享图保存到手机，可发朋友圈 / 抖音 / 小红书</>
                   : <>· 下载图片可发朋友圈 / 抖音 / 小红书</>)}
               </div>
