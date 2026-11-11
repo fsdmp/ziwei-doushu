@@ -68,6 +68,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             同一会话只需带一次参数，后续页面/刷新不再跳引导页，会话结束自动失效 */}
         <script dangerouslySetInnerHTML={{ __html: `(function(){try{if(/[?&]beta=1/.test(location.search)){sessionStorage.setItem('ziwei-beta','1');return;}if(sessionStorage.getItem('ziwei-beta')==='1')return;if(!/miniProgram/i.test(navigator.userAgent)&&!/^(localhost|127\\.0\\.0\\.1|\\[::1\\])$/.test(location.hostname)){location.replace('/open-in-mini.html');}}catch(e){}})();` }} />
         <script dangerouslySetInnerHTML={{ __html: `(function(){try{var t=localStorage.getItem('ziwei-theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t);else document.documentElement.setAttribute('data-theme','dark');}catch(e){}})();` }} />
+        {/* 微信体验分析 web 采集（web-view 真实体验回传，官方「Web 项目接入指引」片段）：
+            原片段非 ES5，按本仓 head 脚本惯例改写为 ES5 IIFE 一起编译（async/await
+            拍平成回调链，SCRIPT_URLs 数组只有一个地址，Promise.race 就地退化成单加载）。
+            maskMode 先 no-mask 方便联调看全量数据，观察期过后按官方 privacy 文档
+            （developers.weixin.qq.com/.../privacy.html）按需切 all-mask 脱敏输入。
+            加载失败仅 console.error，不影响业务；window.__startPX 未注入时静默跳过 */}
+        <script dangerouslySetInnerHTML={{ __html: `(function(){'use strict';try{var param={maskMode:'no-mask',recordCanvas:false,projectId:'wxc7d66f0f80d04243-sfff0fi_k-YZNVLA',iframe:false,console:true,network:true};var supportESModule='noModule' in document.createElement('script');var SCRIPT_URL='https://dev.weixin.qq.com/platform-console/proxy/assets/tel/'+(supportESModule?'px.min.js':'px.es5.min.js');function loadScript(url,ok,fail){var s=document.createElement('script');s.type='text/javascript';s.async=true;s.src=url;s.onload=function(){ok(url);};s.onerror=function(){fail(new Error('Script load error'));};(document.head||document.getElementsByTagName('head')[0]).appendChild(s);};function start(){if(window.__startPX)window.__startPX(param);}try{sessionStorage.setItem('wxobs_start_timestamp',String(Date.now()));}catch(e){}loadScript(SCRIPT_URL,start,function(err){if(window.console)console.error('Error loading scripts:',err);});}catch(e){}})();` }} />
       </head>
       <body className="min-h-screen">
         <ThemeProvider>
